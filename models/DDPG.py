@@ -47,7 +47,7 @@ class DDPolicyGradient(tf.keras.Model):
 11
         # init episiodes buffer
         self.sample_buffer = EpisodesBuffer(capacity=sample_buffer_capacity)
-
+zzzzz
         # init training buffers
         self.view_buf = np.empty((1,) + self.view_space)
         self.feature_buf = np.empty((1,) + self.feature_space)
