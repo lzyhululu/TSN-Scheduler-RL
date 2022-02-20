@@ -22,8 +22,8 @@ class DDPolicyGradient(tf.keras.Model):
         self.reward_decay = reward_decay
         # ======================= build network =======================
         # initialize input dimensions
-        self.input_view = tf.ones(self.view_space, dtype=tf.float32)
-        self.input_feature = tf.ones(self.feature_space, dtype=tf.float32)
+        self.input_view = self.view_space[0]
+        self.input_feature = self.feature_space[0]
 
         # Initializing basic actor/critic models
         # Neural Net Models for agents will be saved in there
@@ -36,21 +36,8 @@ class DDPolicyGradient(tf.keras.Model):
         self.target_ac.set_weights(self.ac_model.get_weights())
         self.target_cr.set_weights(self.cr_model.get_weights())
 
-        # init replay buffers
-        self.replay_buf_len = 0
-        self.memory_size = memory_size
-        self.replay_buf_view = ReplayBuffer(shape=(memory_size,) + self.view_space)
-        self.replay_buf_feature = ReplayBuffer(shape=(memory_size,) + self.feature_space)
-        self.replay_buf_action = ReplayBuffer(shape=(memory_size,), dtype=np.int32)
-        self.replay_buf_reward = ReplayBuffer(shape=(memory_size,))
-        self.replay_buf_terminal = ReplayBuffer(shape=(memory_size,), dtype=np.bool)
         # init episiodes buffer
         self.sample_buffer = EpisodesBuffer(capacity=sample_buffer_capacity)
-        # init training buffers
-        self.view_buf = np.empty((1,) + self.view_space)
-        self.feature_buf = np.empty((1,) + self.feature_space)
-        self.action_buf = np.empty(1, dtype=np.int32)
-        self.reward_buf = np.empty(1, dtype=np.float32)
 
     def _get_actor(self):
         """config the actor network"""
@@ -58,11 +45,8 @@ class DDPolicyGradient(tf.keras.Model):
         # Initialize weights between -3e-5 and 3e-5
         last_init = tf.random_uniform_initializer(minval=-0.00003, maxval=0.00003)
 
-        # Initialize input shape
-        inputs_shape = tf.concat([self.input_view, self.input_feature], axis=0)
-
         # Actor will get observation of the agent, shared in the map
-        inputs = layers.Input(shape=tf.shape(inputs_shape))
+        inputs = layers.Input(shape=(self.input_view + self.input_feature,))
         out = layers.Dense(256, activation="selu", kernel_initializer="lecun_normal")(inputs)
         out = layers.Dropout(rate=0.5)(out)
         out = layers.BatchNormalization()(out)
@@ -81,14 +65,15 @@ class DDPolicyGradient(tf.keras.Model):
 
         # State as input, here this state is the observation of all the agents (input_view)
         # hence this state will have information of observation of all the agents
-        state_input = layers.Input(shape=tf.shape(self.input_view))
+        state_input = layers.Input(shape=(self.input_view,))
         state_out = layers.Dense(16, activation="selu", kernel_initializer="lecun_normal")(state_input)
         state_out = layers.BatchNormalization()(state_out)
         state_out = layers.Dense(32, activation="selu", kernel_initializer="lecun_normal")(state_out)
         state_out = layers.BatchNormalization()(state_out)
 
         # All the agents actions as input
-        action_input = layers.Concatenate()([layers.Input(shape=(self.num_actions,)) for _ in range(self.num_agents)])
+        input_shape = self.input_feature*self.num_agents
+        action_input = layers.Input(shape=(input_shape,))
         action_out = layers.Dense(32, activation="selu", kernel_initializer="lecun_normal")(action_input)
         action_out = layers.BatchNormalization()(action_out)
 
@@ -108,9 +93,9 @@ class DDPolicyGradient(tf.keras.Model):
         model = tf.keras.Model([state_input, action_input], outputs)
         return model
 
-    def sample_step(self, ids, obs, acts, rewards):
+    def sample_step(self, ids, obs, acts, next_obs, rewards):
         """record a step"""
-        self.sample_buffer.record_step(ids, obs, acts, rewards, self.num_actions)
+        self.sample_buffer.record_step(ids, obs, acts, next_obs, rewards, self.num_actions)
 
     def infer_action(self, raw_obs, ids, *args, **kwargs):
         """infer action for a batch of agents
@@ -164,19 +149,24 @@ class DDPolicyGradient(tf.keras.Model):
             batch_indices = np.random.choice(record_range, self.batch_size)
 
             # Convert to tensors
-            state_batch = tf.convert_to_tensor(self.state_buffer[batch_indices])
-            state_batch = tf.convert_to_tensor(self.state_buffer[batch_indices])
-            action_batch = tf.convert_to_tensor(self.action_buffer[batch_indices])
-            reward_batch = tf.convert_to_tensor(self.reward_buffer[batch_indices])
-            reward_batch = tf.cast(reward_batch, dtype=tf.float32)
-            next_state_batch = tf.convert_to_tensor(self.next_state_buffer[batch_indices])
+            view_batch = tf.squeeze(tf.convert_to_tensor(np.array(sample_buffer.total_view)[batch_indices]), axis=1)
+            feature_batch = tf.convert_to_tensor(np.array(sample_buffer.total_features)[batch_indices])
+            feature_batch = tf.reshape(feature_batch, [self.batch_size, -1])
+            state_batch = tf.concat([view_batch, feature_batch], axis=1)
+
+            action_batch = tf.convert_to_tensor(np.array(sample_buffer.total_actions)[batch_indices])
+
+            reward_batch = tf.convert_to_tensor(np.array(sample_buffer.total_rewards)[batch_indices])
+
+            next_view_batch = tf.squeeze(tf.convert_to_tensor(np.array(sample_buffer.total_next_view)[batch_indices]), axis=1)
+            next_feature_batch = tf.convert_to_tensor(np.array(sample_buffer.total_next_features)[batch_indices])
+            next_feature_batch = tf.reshape(next_feature_batch, [self.batch_size, -1])
+            next_state_batch = tf.concat([next_view_batch, next_feature_batch], axis=1)
 
             # Training  and Updating ***critic model*** of ith agent
-            target_actions = np.zeros((self.batch_size, self.num_agents))
+            target_actions = np.zeros((self.batch_size, self.num_agents*self.num_actions))
             for j in range(self.num_agents):
-                target_actions[:, j] = tf.reshape(
-                    target_ac[j](next_state_batch[:, 5 * j:5 * (j + 1)]), [self.batch_size]
-                )
+                target_actions[:, j] = tf.reshape(self.target_ac(next_state_batch[j]), [self.batch_size])
 
             target_action_batch1 = target_actions[:, 0]
             target_action_batch2 = target_actions[:, 1]

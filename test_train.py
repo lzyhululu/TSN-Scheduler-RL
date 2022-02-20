@@ -41,6 +41,7 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
 
     n = len(handles)
     obs = [[] for _ in range(n)]
+    next_obs = [[] for _ in range(n)]
     ids = [[] for _ in range(n)]
     acts = [[] for _ in range(n)]
     nums = [env.get_num(handle) for handle in handles]
@@ -64,13 +65,16 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
         # simulate one step
         done = env.step()
 
+        for i in range(n):
+            next_obs[i] = env.get_observation(handles[i])
+
         # sample
         step_reward = []
         for i in range(n):
             rewards = env.get_reward(handles[i])
             if train:
                 # store samples in replay buffer (non-blocking)
-                models[i].sample_step(ids[i], obs[i], acts[i], rewards)
+                models[i].sample_step(ids[i], obs[i], acts[i], next_obs[i], rewards)
             s = sum(rewards)
             step_reward.append(s)
             total_reward[i] += s

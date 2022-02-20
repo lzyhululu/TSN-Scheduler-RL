@@ -65,21 +65,21 @@ class ReplayBuffer:
 class EpisodesBufferEntry:
     """Entry for episode buffer"""
     def __init__(self):
-        self.views = []
         self.features = []
         self.actions = []
+        self.next_features = []
         self.rewards = []
 
-    def append(self, view, feature, action, reward):
-        self.views.append(view.copy())
+    def append(self, feature, action, next_feature, reward):
         self.features.append(feature.copy())
         self.actions.append(action)
+        self.next_features.append(next_feature.copy())
         self.rewards.append(reward)
 
-    def full_reset(self, view, feature, action, reward, idx):
-        self.views[idx] = view.copy()
+    def full_reset(self, feature, action, next_feature, reward, idx):
         self.features[idx] = feature.copy()
         self.actions[idx] = action
+        self.next_features[idx] = next_feature.copy()
         self.rewards[idx] = reward
 
 
@@ -90,24 +90,43 @@ class EpisodesBuffer:
        this for DDPG
     """
     def __init__(self, capacity):
+        self.total_view = []
+        self.total_features = []
+        self.total_actions = []
+        self.total_rewards = []
+        self.total_next_view = []
+        self.total_next_features = []
         self.buffer = {}
         self.capacity = capacity
         self.buff_counter = 0
         self.is_full = False
 
-    def record_step(self, ids, obs, acts, rewards, num_actions):
+    def record_step(self, ids, obs, acts, next_obs, rewards, num_actions):
         """record transitions (s, a, r, terminal) in a step"""
         buffer = self.buffer
         index = np.random.permutation(len(ids))
 
         if self.is_full:  # extract loop invariant in else part
             idx = self.buff_counter % self.capacity
+            self.total_view[idx] = obs[0].copy()
+            self.total_features[idx] = obs[1].copy()
+            self.total_actions[idx] = acts
+            self.total_rewards[idx] = rewards
+            self.total_next_view[idx] = next_obs[0].copy()
+            self.total_next_features[idx] = next_obs[1].copy()
             for i in range(len(ids)):
                 entry = buffer.get(ids[i])
                 if entry is None:
                     continue
-                entry.full_reset(obs[0], obs[1][i], acts[num_actions*i: num_actions * i + num_actions], rewards[i], idx)
+                entry.full_reset(obs[1][i], acts[num_actions*i: num_actions * i + num_actions],
+                                 next_obs[1][i], rewards[i], idx)
         else:
+            self.total_view.append(obs[0].copy())
+            self.total_features.append(obs[1].copy())
+            self.total_actions.append(acts)
+            self.total_rewards.append(rewards)
+            self.total_next_view.append(next_obs[0].copy())
+            self.total_next_features.append(next_obs[1].copy())
             for i in range(len(ids)):
                 i = index[i]
                 entry = buffer.get(ids[i])
@@ -116,7 +135,7 @@ class EpisodesBuffer:
                     buffer[ids[i]] = entry
                     if self.buff_counter >= self.capacity:
                         self.is_full = True
-                entry.append(obs[0], obs[1][i], acts[num_actions*i: num_actions*i + num_actions], rewards[i])
+                entry.append(obs[1][i], acts[num_actions*i: num_actions*i + num_actions], next_obs[1][i], rewards[i])
 
         self.buff_counter += 1
 
