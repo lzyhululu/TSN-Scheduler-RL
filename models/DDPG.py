@@ -44,7 +44,6 @@ class DDPolicyGradient(tf.keras.Model):
         self.replay_buf_action = ReplayBuffer(shape=(memory_size,), dtype=np.int32)
         self.replay_buf_reward = ReplayBuffer(shape=(memory_size,))
         self.replay_buf_terminal = ReplayBuffer(shape=(memory_size,), dtype=np.bool)
-11
         # init episiodes buffer
         self.sample_buffer = EpisodesBuffer(capacity=sample_buffer_capacity)
         # init training buffers
