@@ -1,0 +1,7 @@
+gym
+pettingzoo
+numpy
+magent
+pygame
+pandas
+matplotlib
