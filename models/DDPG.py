@@ -46,7 +46,7 @@ class DDPolicyGradient(tf.keras.Model):
         last_init = tf.random_uniform_initializer(minval=-0.00003, maxval=0.00003)
 
         # Actor will get observation of the agent, shared in the map
-        inputs = layers.Input(shape=(self.input_view + self.input_feature,))
+        inputs = layers.Input(shape=(self.input_view + self.input_feature*self.num_agents,))
         out = layers.Dense(256, activation="selu", kernel_initializer="lecun_normal")(inputs)
         out = layers.Dropout(rate=0.5)(out)
         out = layers.BatchNormalization()(out)
@@ -56,7 +56,7 @@ class DDPolicyGradient(tf.keras.Model):
 
         # using sigmoid activation as action values for
         # for our environment lies between 0 to 1
-        outputs = layers.Dense(self.num_actions, activation="sigmoid", kernel_regularizer=last_init)(out)
+        outputs = layers.Dense(self.num_actions*self.num_agents, activation="sigmoid", kernel_regularizer=last_init)(out)
         model = tf.keras.Model(inputs, outputs)
         return model
 
@@ -72,8 +72,7 @@ class DDPolicyGradient(tf.keras.Model):
         state_out = layers.BatchNormalization()(state_out)
 
         # All the agents actions as input
-        input_shape = self.input_feature*self.num_agents
-        action_input = layers.Input(shape=(input_shape,))
+        action_input = layers.Input(shape=(self.input_feature*self.num_agents,))
         action_out = layers.Dense(32, activation="selu", kernel_initializer="lecun_normal")(action_input)
         action_out = layers.BatchNormalization()(action_out)
 
@@ -113,21 +112,17 @@ class DDPolicyGradient(tf.keras.Model):
             actions for agents
         """
         view, feature = raw_obs[0], raw_obs[1]
-        n = len(feature)
+        feature = tf.reshape(feature, [1, -1])
         # Get actions for each agents from respective models and store them in list
-        actions = np.empty((n, self.num_actions), dtype=np.float32)
-        for i in range(n):
-            input_para = np.concatenate((view, np.expand_dims(feature[i], 0)), axis=1)
-            actions[i] = self.ac_model(input_para)
-        actions = actions.reshape(-1)
+        input_para = np.concatenate((view, feature), axis=1)
+        actions = self.ac_model(input_para)
         return actions
 
-    def train(self, sample_buffer, print_every=1000):
-        """feed new data sample and train
-
-        Parameters
-        ----------
-        sample_buffer: buffer.EpisodesBuffer
+    def train_first(self, sample_buffer, print_every=1000):
+        """
+        first means to get the next_actions
+        feed new data sample and train
+        sample_buffer: buffer.EpisodesBuffer-p
             buffer contains samples
 
         Returns
@@ -149,35 +144,29 @@ class DDPolicyGradient(tf.keras.Model):
             batch_indices = np.random.choice(record_range, self.batch_size)
 
             # Convert to tensors
-            view_batch = tf.squeeze(tf.convert_to_tensor(np.array(sample_buffer.total_view)[batch_indices]), axis=1)
+            # state_batch
+            view_batch = tf.convert_to_tensor(np.array(sample_buffer.total_view)[batch_indices])
             feature_batch = tf.convert_to_tensor(np.array(sample_buffer.total_features)[batch_indices])
-            feature_batch = tf.reshape(feature_batch, [self.batch_size, -1])
-            state_batch = tf.concat([view_batch, feature_batch], axis=1)
-
+            feature_batch = tf.reshape(feature_batch, [self.batch_size, 1, -1])
+            state_batch = tf.concat([view_batch, feature_batch], axis=2)
+            state_batch = tf.squeeze(state_batch, axis=1)
+            # action_batch
             action_batch = tf.convert_to_tensor(np.array(sample_buffer.total_actions)[batch_indices])
-
+            # reward_batch
             reward_batch = tf.convert_to_tensor(np.array(sample_buffer.total_rewards)[batch_indices])
-
-            next_view_batch = tf.squeeze(tf.convert_to_tensor(np.array(sample_buffer.total_next_view)[batch_indices]), axis=1)
+            # next_state_batch
+            next_view_batch = tf.convert_to_tensor(np.array(sample_buffer.total_next_view)[batch_indices])
             next_feature_batch = tf.convert_to_tensor(np.array(sample_buffer.total_next_features)[batch_indices])
-            next_feature_batch = tf.reshape(next_feature_batch, [self.batch_size, -1])
-            next_state_batch = tf.concat([next_view_batch, next_feature_batch], axis=1)
+            next_feature_batch = tf.reshape(next_feature_batch, [self.batch_size, 1, -1])
+            next_state_batch = tf.concat([next_view_batch, next_feature_batch], axis=2)
+            next_state_batch = tf.squeeze(next_state_batch, axis=1)
 
             # Training  and Updating ***critic model*** of ith agent
-            target_actions = np.zeros((self.batch_size, self.num_agents*self.num_actions))
-            for j in range(self.num_agents):
-                target_actions[:, j] = tf.reshape(self.target_ac(next_state_batch[j]), [self.batch_size])
-
-            target_action_batch1 = target_actions[:, 0]
-            target_action_batch2 = target_actions[:, 1]
-            target_action_batch3 = target_actions[:, 2]
-            action_batch1 = action_batch[:, 0]
-            action_batch2 = action_batch[:, 1]
-            action_batch3 = action_batch[:, 2]
-
+            target_action = self.target_ac(next_state_batch)
+        return target_action
             # Finding Gradient of loss function
             with tf.GradientTape() as tape:
-                y = reward_batch[:, i] + gamma * target_cr[i]([
+                y = reward_batch[:, i] + self.reward_decay * target_cr[i]([
                     next_state_batch, target_action_batch1,
                     target_action_batch2, target_action_batch3
                 ])

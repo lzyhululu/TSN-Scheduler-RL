@@ -1,7 +1,6 @@
 gym
-pettingzoo
 numpy
-magent
 pygame
 pandas
+tensorflow
 matplotlib

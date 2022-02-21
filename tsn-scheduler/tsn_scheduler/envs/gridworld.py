@@ -29,7 +29,7 @@ class GridWorld(Environment):
         if isinstance(config, str):
             # config are stored in ./configs
             try:
-                demo_game = importlib.import_module('envs.configs.' + config)
+                demo_game = importlib.import_module('tsn_scheduler.envs.configs.' + config)
                 config = getattr(demo_game, 'get_config')(**kwargs)
             except AttributeError:
                 raise Exception('unknown config:"' + config + '"')

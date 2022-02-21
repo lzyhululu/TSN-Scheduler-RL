@@ -13,5 +13,5 @@ if sys.platform.startswith("linux"):
 
 register(
     id='scheduler-v0',                                   # Format should be xxx-v0, xxx-v1....
-    entry_point='tsn_scheduler.envs:GridWorld',              # Expalined in envs/__init__.py
+    entry_point='tsn_scheduler.envs:GridWorld',
 )
