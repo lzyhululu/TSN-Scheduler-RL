@@ -122,9 +122,16 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
 
 def train_parallel(models, agent_size):
     target_actions = []
-    for i in range(agent_size):
-        target_actions[i] = models[i].train(models[i].sample_buffer, print_every=500)
 
+    # Get sampling range
+    record_range = min(models[0].sample_buffer.capacity, models[0].sample_buffer.counter())
+
+    # Randomly sample indices
+    batch_indices = np.random.choice(record_range, models[0].batch_size)
+    for i in range(agent_size):
+        target_actions[i] = models[i].train_first(models[i].sample_buffer, batch_indices)
+    for i in range(agent_size):
+        target_actions[i] = models[i].train_second(models[i].sample_buffer, batch_indices)
 
 
 def main():
