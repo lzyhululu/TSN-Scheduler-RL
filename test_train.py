@@ -124,17 +124,26 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
 
 
 def train_parallel(models, agent_size):
-    target_actions = []
-
+    target_actions = [None for _ in range(agent_size)]
+    features_batch = [None for _ in range(agent_size)]
+    target_actions_batch = [None for _ in range(agent_size)]
+    rewards_batch = [None for _ in range(agent_size)]
+    next_features_batch = [None for _ in range(agent_size)]
+    last_actions_batch = [None for _ in range(agent_size)]
     # Get sampling range
     record_range = min(models[0].sample_buffer.capacity, models[0].sample_buffer.counter())
 
     # Randomly sample indices
     batch_indices = np.random.choice(record_range, models[0].batch_size)
+    # get actions from target policy network muon'
     for i in range(agent_size):
-        target_actions[i] = models[i].train_first(models[i].sample_buffer, batch_indices)
+        target_actions[i], features_batch[i], target_actions_batch[i], rewards_batch[i], next_features_batch[i], \
+            last_actions_batch[i] = models[i].train_first(models[i].sample_buffer, batch_indices)
+    # calculate the gradient of the online Q network with total actions and states
+    # and update online Q network and online policy network(actor network)
     for i in range(agent_size):
-        target_actions[i] = models[i].train_second(models[i].sample_buffer, batch_indices)
+        models[i].train_second(models[i].sample_buffer, batch_indices, target_actions, features_batch,
+                               target_actions_batch, rewards_batch, next_features_batch, last_actions_batch)
 
 
 def main():
@@ -169,9 +178,10 @@ def main():
     # xx_lr: Learning rate for actor-critic models
     # reward_decay: Discount factor for future rewards
     # target_update: Used to update target networks
+    nums = [env.get_num(handle) for handle in handles]
     for i in range(len(names)):
         model_args = {'eval_obs': eval_obs[i], 'memory_size': 8 * 625, 'critic_lr': 1e-4,
-                      'actor_lr': 5e-5, 'reward_decay': 0.95, 'target_update': 0.005}
+                      'actor_lr': 5e-5, 'reward_decay': 0.95, 'target_update': 0.005, 'nums_all_agent': nums}
         # models.append(ProcessingModel(env, handles[i], names[i], 20000+i, 1000, RLModel, **model_args))
         models.append(RLModel(env, handles[i], names[i], **model_args))
 

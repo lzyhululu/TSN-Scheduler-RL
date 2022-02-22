@@ -111,7 +111,7 @@ class EpisodesBuffer:
             self.total_view[idx] = obs[0].copy()
             self.total_features[idx] = obs[1].copy()
             self.total_actions[idx] = acts
-            self.total_rewards[idx] = rewards
+            self.total_rewards[idx] = np.sum(rewards)
             self.total_next_view[idx] = next_obs[0].copy()
             self.total_next_features[idx] = next_obs[1].copy()
             for i in range(len(ids)):
@@ -124,7 +124,7 @@ class EpisodesBuffer:
             self.total_view.append(obs[0].copy())
             self.total_features.append(obs[1].copy())
             self.total_actions.append(acts)
-            self.total_rewards.append(rewards)
+            self.total_rewards.append(np.sum(rewards))
             self.total_next_view.append(next_obs[0].copy())
             self.total_next_features.append(next_obs[1].copy())
             for i in range(len(ids)):
