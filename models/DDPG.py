@@ -3,6 +3,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers
 from .buffer import ReplayBuffer, EpisodesBuffer
+from .noise import OUActionNoise
 
 
 class DDPolicyGradient(tf.keras.Model):
@@ -96,15 +97,13 @@ class DDPolicyGradient(tf.keras.Model):
         """record a step"""
         self.sample_buffer.record_step(ids, obs, acts, next_obs, rewards, self.num_actions)
 
-    def infer_action(self, raw_obs, ids, *args, **kwargs):
+    def infer_action(self, raw_obs, *args, **kwargs):
         """infer action for a batch of agents
-
+        bahaviour policy: beta, which combines online policy muon and ou_noises
         Parameters
         ----------
         raw_obs: tuple(numpy array, numpy array)
             raw observation of agents tuple(views, features)
-        ids: numpy array
-            ids of agents
 
         Returns
         -------

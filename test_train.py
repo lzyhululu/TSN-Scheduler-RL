@@ -56,7 +56,10 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
             obs[i] = env.get_observation(handles[i])
             ids[i] = env.get_agent_id(handles[i])
             # let models infer action in parallel (non-blocking)
-            acts[i] = models[i].infer_action(obs[i], ids[i], 'e_greedy', eps, block=False).numpy()
+            action = models[i].infer_action(obs[i]).numpy()
+            # add gauss noises, delete OUnoises after consideration
+            np.clip(action + np.random.normal(0, args.sigma, size=action.shape), 0.0, 1.0, out=action)
+            acts[i] = action
 
         for i in range(n):
             # acts[i] = models[i].fetch_action()  # fetch actions (blocking)

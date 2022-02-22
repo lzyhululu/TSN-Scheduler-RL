@@ -31,6 +31,10 @@ parser.add_argument("--name", type=str, default="test_scheduler")
 parser.add_argument("--eval", type=bool, default=True)
 parser.add_argument('--alg', default='dqn', choices=['dqn', 'drqn', 'a2c'])
 
+# -- basic DDPG parameters --
+# sigma control the rate of exploration
+parser.add_argument("--sigma", type=float, default=0.02)
+
 
 args = parser.parse_args()
 
