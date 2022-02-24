@@ -37,8 +37,8 @@ public:
 
     // run step
     void get_observation(GroupHandle group, float **linear_buffers) override;
-    void set_action(GroupHandle group, const float *actions) override;
-    void step(int *done) override;
+    void set_action(GroupHandle group, const float *actions, bool ignore_offsets) override;
+    void step(int *done, bool ignore_offsets) override;
     void get_reward(GroupHandle group, float *buffer) override;
 
     // info getter
@@ -147,6 +147,7 @@ public:
     int *get_routes() const { return routes; }
     int *get_offsets() const { return offsets; }
     int get_offsets_num() const { return n; }
+    int get_worst_delay() const { return worst_delay; }
 
 
     void get_embedding(float *buf, int size) {
@@ -182,7 +183,7 @@ public:
     Reward get_last_reward()    { return last_reward; }
     void add_reward(Reward add) { next_reward += add; }
     // reward of delay
-    void calc_delay(float value){
+    bool calc_delay(float value){
         int delay = 0;
         for(int i = 1; i < n; i++){
             if(offsets[i] < offsets[i-1])
@@ -190,18 +191,25 @@ public:
             else
                 delay += offsets[i] - offsets[i-1];
         }
-        if(delay > worst_delay)
+        if(delay > worst_delay){
             add_reward(Reward((worst_delay - delay) * value));
+            return false;
+        }
+        return true;
     };
 
     // should be modified
     void set_involved(bool value) { be_involved = value; }
     bool get_involved() { return be_involved; }
 
-    void set_action(Action act) { 
-        for(int i = 0; i < nodes_num; i++){
-            last_action[i] = act[i]; 
+    void set_action(Action act, bool ignore_offsets) { 
+        if(!ignore_offsets){
+            for(int i = 0; i < nodes_num; i++){
+                last_action[i] = act[i]; 
+            }
         }
+        else
+            last_action[0] = act[0];
     }
     Action get_action()         { return last_action; }
 
@@ -267,11 +275,13 @@ public:
     Reward get_reward()         { return next_reward; }
     void add_reward(Reward add) { next_reward += add; }
     // agent reward
-    void calc_delay(float value){
+    bool calc_delay(float value){
+        bool flag = true;
         for(Agent *i:agents){
-            i->calc_delay(value);
+            flag &= i->calc_delay(value);
             i->update_reward();
         }
+        return flag;
     }
 
     // use a base to eliminate duplicates in Gridworld::calc_reward

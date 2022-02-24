@@ -13,10 +13,10 @@ class Environment:
     def get_observation(self, handle):
         pass
 
-    def set_action(self, handle, actions):
+    def set_action(self, handle, actions, ignore_offsests):
         pass
 
-    def step(self):
+    def step(self, ignore_offsets):
         pass
 
     def render(self):

@@ -57,7 +57,7 @@ void Map::remove_agent(Agent *agent) {
 }
 
 // do move for agent, new_offsets means the new position in the flow cycle
-Reward Map::do_move(Agent *agent, const int *action_int) {
+Reward Map::do_move(Agent *agent, const int *action_int, bool ignore_offsets) {
     int length = agent->get_length(), height = agent->get_height();
     int cycle = agent->get_type().cycle;
     // use quote to save the memory
@@ -67,24 +67,31 @@ Reward Map::do_move(Agent *agent, const int *action_int) {
     int *routes = pos.routes;
     int *offsets = pos.offsets;
     // old position
-    clear_area(length, height, cycle, offsets_n, routes, offsets);
+    clear_area(length, height, cycle, offsets_n, routes, offsets, ignore_offsets);
     // update to new position
     agent->update_pos(action_int);
-    fill_area(length, height, cycle, offsets_n, routes, offsets);
+    fill_area(length, height, cycle, offsets_n, routes, offsets, ignore_offsets);
     return 0.0;
 }
 
 // calculate global reward for OP_COLLIDE rule
-void Map::calc_global(float value){
+bool Map::calc_global(float value){
     float reward = 0;
+    bool flag = true;
+    // if no collide, flag = true
     # pragma omp parallel for
     for (int i = 0; i < h * w; i++) {
-        if(map_slots[i] < 0)
-            reward -= map_slots[i] * value;
+        if(map_slots[i] < 0){
+            reward += map_slots[i] * value;
+            flag = false;
+        }
     }
+    if(flag == true)
+        reward += 1000.0*value;
     static_cast<Reward>(reward);
     // here replace the last reward with this new reward directly
     add_reward(reward);
+    return flag;
 }
 
 /**
@@ -92,40 +99,68 @@ void Map::calc_global(float value){
  */
 
 // fill several rectangle
-inline void Map::fill_area(int length, int height, int cycle, int offsets_n, int *routes, int *offsets) {
+inline void Map::fill_area(int length, int height, int cycle, int offsets_n, int *routes, int *offsets, bool ignore_offsets) {
     // the node index in the route
     int node_idx;
     // global cycle / flow cycle * painting height
     int basic_N = MAP_INNER_Y_ADD / cycle * height;
     // offsets[] defines the offset in each node, the rest of it based on first value 
     # pragma omp parallel for
-    for (int n = 0; n < offsets_n; n++) {
-        node_idx = routes[n];
-        for (int i = 0; i < length; i++) {
-            PositionInteger pos_int = pos2int((offsets[n] + i) % cycle, node_idx * height);
-            for (int j = 0; j < basic_N; j++) {
-                map_slots[pos_int] -= 1;
-                pos_int += cycle;
+    if(!ignore_offsets){
+        for (int n = 0; n < offsets_n; n++) {
+            node_idx = routes[n];
+            for (int i = 0; i < length; i++) {
+                PositionInteger pos_int = pos2int((offsets[n] + i) % cycle, node_idx * height);
+                for (int j = 0; j < basic_N; j++) {
+                    map_slots[pos_int] -= 1;
+                    pos_int += cycle;
+                }
+            }
+        }
+    }
+    else{
+        for (int n = 0; n < offsets_n; n++) {
+            node_idx = routes[n];
+            for (int i = 0; i < length; i++) {
+                PositionInteger pos_int = pos2int((offsets[0] + n*2 + i) % cycle, node_idx * height);
+                for (int j = 0; j < basic_N; j++) {
+                    map_slots[pos_int] -= 1;
+                    pos_int += cycle;
+                }
             }
         }
     }
 }
 
 // clear a rectangle
-inline void Map::clear_area(int length, int height, int cycle, int offsets_n, int *routes, int *offsets) {
+inline void Map::clear_area(int length, int height, int cycle, int offsets_n, int *routes, int *offsets, bool ignore_offsets) {
     // the node index in the route
     int node_idx;
     // global cycle / flow cycle * painting height
     int basic_N = MAP_INNER_Y_ADD / cycle * height;
 
     # pragma omp parallel for
-    for (int n = 0; n < offsets_n; n++) {
-        node_idx = routes[n];
-        for (int i = 0; i < length; i++) {
-            PositionInteger pos_int = pos2int((offsets[n] + i) % cycle, node_idx * height);
-            for (int j = 0; j < basic_N; j++) {
-                map_slots[pos_int] += 1;
-                pos_int += cycle;
+    if(!ignore_offsets){
+        for (int n = 0; n < offsets_n; n++) {
+            node_idx = routes[n];
+            for (int i = 0; i < length; i++) {
+                PositionInteger pos_int = pos2int((offsets[n] + i) % cycle, node_idx * height);
+                for (int j = 0; j < basic_N; j++) {
+                    map_slots[pos_int] += 1;
+                    pos_int += cycle;
+                }
+            }
+        }
+    }
+    else{
+        for (int n = 0; n < offsets_n; n++) {
+            node_idx = routes[n];
+            for (int i = 0; i < length; i++) {
+                PositionInteger pos_int = pos2int((offsets[0] + n*2 + i) % cycle, node_idx * height);
+                for (int j = 0; j < basic_N; j++) {
+                    map_slots[pos_int] += 1;
+                    pos_int += cycle;
+                }
             }
         }
     }

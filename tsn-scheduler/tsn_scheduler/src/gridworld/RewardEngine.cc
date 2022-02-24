@@ -87,15 +87,18 @@ void GridWorld::init_reward_description() {
 
 void GridWorld::calc_rule(RewardRule &rule) {
     rule.trigger = true;
+    bool terminal = false;
     switch (rule.op) {
         case OP_COLLIDE:
-            map.calc_global(rule.values[0]);
+            rule.is_terminal = map.calc_global(rule.values[0]);
             break;
         case OP_E2E_DELAY:
             // for every agent in groups
+            
             for(Group i :groups){
-                i.calc_delay(rule.values[0]);
+                terminal &= i.calc_delay(rule.values[0]);
             }
+            rule.is_terminal = terminal;
             break;
         default:
             LOG(FATAL) << "invalid op of Rulw in GridWorld::calc_rule";

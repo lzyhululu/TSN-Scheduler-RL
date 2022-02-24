@@ -13,19 +13,19 @@ def get_config(global_cycle, nodes_num):
 
     cycle64 = cfg.register_agent_type(
         "cycle64",
-        {'height': 1, 'cycle': 256, 'step_reward': -0.005})
+        {'height': 1, 'cycle': 256, 'step_reward': 0})
 
     cycle128 = cfg.register_agent_type(
         "cycle128",
-        {'height': 1, 'cycle': 512, 'step_reward': -0.005})
+        {'height': 1, 'cycle': 512, 'step_reward': 0})
 
     cycle256 = cfg.register_agent_type(
         "cycle256",
-        {'height': 1, 'cycle': 1024, 'step_reward': -0.005})
+        {'height': 1, 'cycle': 1024, 'step_reward': 0})
 
     cycle512 = cfg.register_agent_type(
         "cycle512",
-        {'height': 1, 'cycle': 2048, 'step_reward': -0.005})
+        {'height': 1, 'cycle': 2048, 'step_reward': 0})
 
     # g: group  number: index of this group
     g0 = cfg.add_group(cycle64)
@@ -39,8 +39,9 @@ def get_config(global_cycle, nodes_num):
     d = gw.AgentSymbol(g3, index='all')
 
     # reward shaping to meet the constraints
-    cfg.add_reward_rule("no_collide", receiver=[a, b, c, d], value=[0.1, 0.1, 0.1, 0.1])
-    cfg.add_reward_rule("e2e_delay", receiver=[a, b, c, d], value=[0.1, 0.1, 0.1, 0.1])
+    cfg.add_reward_rule("no_collide", receiver=[a, b, c, d], value=[0.01, 0.01, 0.01, 0.01])
+    # ignore offsets
+    # cfg.add_reward_rule("e2e_delay", receiver=[a, b, c, d], value=[0.005, 0.005, 0.005, 0.005])
 
     return cfg
 

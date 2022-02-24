@@ -34,7 +34,7 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
     env.reset()
     generate_map(env, graph)
     # random initialize
-    buffer.sample_observation(env, handles, n_obs=1, step=1)
+    # buffer.sample_observation(env, handles, n_obs=1, step=1)
 
     step_ct = 0
     done = False
@@ -58,15 +58,18 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
             # let models infer action in parallel (non-blocking)
             action = models[i].infer_action(obs[i]).numpy()
             # add gauss noises, delete OUnoises after consideration
-            np.clip(action + np.random.normal(0, args.sigma, size=action.shape), 0.0, 1.0, out=action)
+            np.clip(action + np.random.normal(0, eps*args.sigma, size=action.shape), 0.0, 0.15, out=action)
             acts[i] = action
 
         for i in range(n):
             # acts[i] = models[i].fetch_action()  # fetch actions (blocking)
-            env.set_action(handles[i], acts[i])
+            env.set_action(handles[i], acts[i], models[i].ignore_offsets)
 
         # simulate one step
-        done = env.step()
+        done = env.step(models[0].ignore_offsets)
+        if done:
+            log.info("done")
+            print("done")
 
         for i in range(n):
             next_obs[i] = env.get_observation(handles[i])
@@ -78,7 +81,7 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
             if train:
                 # store samples in replay buffer (non-blocking)
                 models[i].sample_step(ids[i], obs[i], acts[i], next_obs[i], rewards)
-            s = sum(rewards)
+            s = sum(rewards) if not models[i].ignore_offsets else rewards[0]
             step_reward.append(s)
             total_reward[i] += s
 
@@ -89,23 +92,20 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
         # stat info
         nums = [env.get_num(handle) for handle in handles]
 
-        # # check return message of previous called non-blocking function sample_step()
+        # check return message of previous called non-blocking function sample_step()
         # if args.train:
         #     for model in models:
         #         model.check_done()
 
         if step_ct % print_every == 0:
             print("step %3d,  nums: %s reward: %s,  total_reward: %s " %
-                  (step_ct, nums, np.around(step_reward, 2), np.around(total_reward, 2)))
+                  (step_ct, nums, np.around(step_reward[0], 2), np.around(total_reward[0], 2)))
         step_ct += 1
         if step_ct > 100:
             break
 
-    sample_time = time.time() - start_time
-    print("steps: %d,  total time: %.2f,  step average %.2f" % (step_ct, sample_time, sample_time / step_ct))
-
     # train
-    total_loss, value = [0 for _ in range(n)], [0 for _ in range(n)]
+    # total_loss, value = [0 for _ in range(n)], [0 for _ in range(n)]
     if train:
         print("===== train =====")
         start_time = time.time()
@@ -113,14 +113,18 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
         # train models in parallel
         train_parallel(models, n)
 
-        for i in range(n):
-            total_loss[i], value[i] = models[i].fetch_train()
+        # for i in range(n):
+        #     total_loss[i], value[i] = models[i].fetch_train()
 
         train_time = time.time() - start_time
         print("train_time %.2f" % train_time)
 
+    sample_time = time.time() - start_time
+    print("steps: %d,  total time: %.2f,  step average %.2f" % (step_ct, sample_time, sample_time / step_ct))
+
     def round_list(list_): return [round(x, 2) for x in list_]
-    return round_list(total_loss), nums, round_list(total_reward), round_list(value)
+    # return round_list(total_loss), nums, round_list(total_reward), round_list(value)
+    return nums, round_list(total_reward)
 
 
 def train_parallel(models, agent_size):
@@ -144,6 +148,10 @@ def train_parallel(models, agent_size):
     for i in range(agent_size):
         models[i].train_second(models[i].sample_buffer, batch_indices, target_actions, features_batch,
                                target_actions_batch, rewards_batch, next_features_batch, last_actions_batch)
+    # Updating target networks for each agent
+    for i in range(agent_size):
+        # soft update, tau: update rate
+        models[i].update_target(0.01)
 
 
 def main():
@@ -162,9 +170,9 @@ def main():
 
     # sample eval observation set and initialize observation space
     eval_obs = [None, None, None, None]
-    if args.eval:
-        print("sample eval set...")
-        eval_obs = buffer.sample_observation(env, handles, n_obs=50, step=100)
+    # if args.eval:
+    #     print("sample eval set...")
+    #     eval_obs = buffer.sample_observation(env, handles, n_obs=50, step=100)
 
     # DDPG
     from models import DDPolicyGradient
@@ -180,13 +188,13 @@ def main():
     # target_update: Used to update target networks
     nums = [env.get_num(handle) for handle in handles]
     for i in range(len(names)):
-        model_args = {'eval_obs': eval_obs[i], 'memory_size': 8 * 625, 'critic_lr': 1e-4,
+        model_args = {'eval_obs': eval_obs[i], 'memory_size': 8 * 625, 'critic_lr': 1e-4, 'ignore_offsets': True,
                       'actor_lr': 5e-5, 'reward_decay': 0.95, 'target_update': 0.005, 'nums_all_agent': nums}
         # models.append(ProcessingModel(env, handles[i], names[i], 20000+i, 1000, RLModel, **model_args))
         models.append(RLModel(env, handles[i], names[i], **model_args))
 
     # load if
-    savedir = './DataSaved/Vehicle_Network/save_model'
+    savedir = './DataSaved/Vehicle_NetWork/save_model'
     if args.load_from is not None:
         start_from = args.load_from
         print("load ... %d" % start_from)
@@ -204,12 +212,13 @@ def main():
     for k in range(start_from, start_from + args.n_round):
         tic = time.time()
         eps = buffer.piecewise_decay(k, [0, 700, 1400], [1, 0.2, 0.05])
-
-        loss, num, reward, value = play_a_round(env, graph, handles, models,
-                                                train=args.train, print_every=50,
-                                                render=args.render or (k+1) % args.render_every == 0,
-                                                eps=eps)  # for e-greedy
-        log.info("round %d\t loss: %s\t num: %s\t reward: %s\t value: %s" % (k, loss, num, reward, value))
+        # loss, num, reward, value
+        num, reward = play_a_round(env, graph, handles, models,
+                                   train=args.train, print_every=50,
+                                   render=args.render or (k+1) % args.render_every == 0,
+                                   eps=eps)  # for e-greedy
+        # log.info("round %d\t loss: %s\t num: %s\t reward: %s\t value: %s" % (k, loss, num, reward, value))
+        log.info("round %d\t num: %s\t reward: %s" % (k, num, reward))
         print("round time %.2f  total time %.2f\n" % (time.time() - tic, time.time() - start))
 
         # save models
@@ -219,8 +228,8 @@ def main():
                 model.save(savedir, k)
 
     # send quit command
-    for model in models:
-        model.quit()
+    # for model in models:
+    #     model.quit()
 
 
 if __name__ == "__main__":

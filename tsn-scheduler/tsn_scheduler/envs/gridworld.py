@@ -173,7 +173,7 @@ class GridWorld(Environment):
         a = id(view_buf)
         return view_buf, feature_buf
 
-    def set_action(self, handle, actions):
+    def set_action(self, handle, actions, ignore_offsets):
         """ set actions for whole group
 
         Parameters
@@ -181,12 +181,13 @@ class GridWorld(Environment):
         handle: group handle
         actions: numpy array
             the dtype of actions must be float
+        ignore_offsets:
         """
         assert isinstance(actions, np.ndarray)
         assert actions.dtype == np.float32
-        _LIB.env_set_action(self.game, handle, actions.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+        _LIB.env_set_action(self.game, handle, actions.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), ignore_offsets)
 
-    def step(self):
+    def step(self, ignore_offsets):
         """simulation one step after set actions
 
         Returns
@@ -195,7 +196,7 @@ class GridWorld(Environment):
             whether the game is done
         """
         done = ctypes.c_int32()
-        _LIB.env_step(self.game, ctypes.byref(done))
+        _LIB.env_step(self.game, ctypes.byref(done), ignore_offsets)
         return bool(done)
 
     def get_reward(self, handle):

@@ -84,13 +84,13 @@ int main() {
 
     // set action
     float actions[30] = {0.92123, 0.32121, 0.13746, 0, 0, 0, 0.92123, 0.32121, 0.13746, 0, 0, 0, 0.13746, 0, 0, 0, 0.92123, 0.32121, 0.13746, 0, 0, 0, 0.92123, 0.32121, 0.13746, 0, 0, 0, 0.92123, 0.32121};
-    env_set_action(*game, group1, actions);
+    env_set_action(*game, group1, actions, true);
     env_set_action(*game, group2, actions+18);
 
 
     // env step
     int done = false;
-    env_step(*game, &done);
+    env_step(*game, &done, true);
 
     // env render
     env_get_observation(*game, group1, linear_buffers);

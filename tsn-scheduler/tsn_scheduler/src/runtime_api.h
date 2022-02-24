@@ -25,8 +25,8 @@ int env_show_config(EnvHandle game);
 // run step
 int env_reset(EnvHandle game);
 int env_get_observation(EnvHandle game, GroupHandle group, float **buffer);
-int env_set_action(EnvHandle game, GroupHandle group, const float *actions);
-int env_step(EnvHandle game, int *done);
+int env_set_action(EnvHandle game, GroupHandle group, const float *actions, bool ignore_offsets=false);
+int env_step(EnvHandle game, int *done, bool ignore_offsets=false);
 int env_get_reward(EnvHandle game, GroupHandle group, float *buffer);
 
 // info getter

@@ -7,6 +7,8 @@ parser = argparse.ArgumentParser(description='tsn_marl')
 parser.add_argument('--nodes_num', type=int, default=6)
 parser.add_argument('--data_path', type=str, default='Vehicle_NetWork',
                     help='the path archi data saved as ./DataSaved/{}/')
+parser.add_argument('--top_stream_path', type=str, default='Topo_Streams',
+                    help='the path archi data saves as ./DataSaved/{}/')
 
 # unit: ms->time_slot
 parser.add_argument('--slot_per_millisecond', type=int, default=4,
@@ -21,11 +23,11 @@ parser.add_argument('--tt_flow_cycles', type=int, nargs='+', default=[64, 128, 2
 parser.add_argument('--global_cycle', type=int, help='global_cycle(ms)')
 
 # -- basic scheduler env: c++ engine --
-parser.add_argument("--save_every", type=int, default=5)
-parser.add_argument("--render_every", type=int, default=10)
-parser.add_argument("--n_round", type=int, default=30)
-parser.add_argument("--render", type=bool, default=False)
+parser.add_argument("--save_every", type=int, default=50)
 parser.add_argument("--load_from", type=int, default=None)
+parser.add_argument("--render_every", type=int, default=10)
+parser.add_argument("--n_round", type=int, default=200)
+parser.add_argument("--render", type=bool, default=False)
 parser.add_argument("--train", type=bool, default=True)
 parser.add_argument("--name", type=str, default="test_scheduler")
 parser.add_argument("--eval", type=bool, default=True)
@@ -33,7 +35,7 @@ parser.add_argument('--alg', default='dqn', choices=['dqn', 'drqn', 'a2c'])
 
 # -- basic DDPG parameters --
 # sigma control the rate of exploration
-parser.add_argument("--sigma", type=float, default=0.02)
+parser.add_argument("--sigma", type=float, default=1.0)
 
 
 args = parser.parse_args()

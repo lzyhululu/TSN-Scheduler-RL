@@ -2,15 +2,16 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers
-from .buffer import ReplayBuffer, EpisodesBuffer
-from .noise import OUActionNoise
+from .buffer import EpisodesBuffer
+from tensorflow.keras.models import load_model
+# from .noise import OUActionNoise
 
 
 class DDPolicyGradient(tf.keras.Model):
     def __init__(self, env, handle, name,
-                 batch_size=64, critic_lr=1e-4, actor_lr=5e-5, reward_decay=0.99,
+                 batch_size=64, critic_lr=0.01, actor_lr=0.01, reward_decay=0.99, ignore_offsets=False,
                  train_freq=1, target_update=2000, memory_size=2 ** 20, eval_obs=None,
-                 use_dueling=True, use_double=True, use_conv=True, sample_buffer_capacity=1000,
+                 use_dueling=True, use_double=True, use_conv=True, sample_buffer_capacity=500,
                  num_gpu=1, nums_all_agent=None, network_type=0):
         """init a model"""
         super().__init__(self)
@@ -19,7 +20,8 @@ class DDPolicyGradient(tf.keras.Model):
         self.view_space = env.get_view_space(handle)
         self.feature_space = env.get_feature_space(handle)
         self.num_agents = env.get_num(handle)
-        self.num_actions = env.get_action_space(handle)[0]
+        self.ignore_offsets = ignore_offsets
+        self.num_actions = env.get_action_space(handle)[0] if not self.ignore_offsets else 1
         self.reward_decay = reward_decay
         self.nums_all_agent = nums_all_agent
         self.handle = handle.value
@@ -53,17 +55,19 @@ class DDPolicyGradient(tf.keras.Model):
         last_init = tf.random_uniform_initializer(minval=-0.00003, maxval=0.00003)
 
         # Actor will get observation of the agent, shared in the map
-        inputs = layers.Input(shape=(self.input_view + self.input_feature*self.num_agents,))
-        out = layers.Dense(256, activation="selu", kernel_initializer="lecun_normal")(inputs)
+        # inputs = layers.Input(shape=(self.input_view + self.input_feature*self.num_agents,))
+        inputs = layers.Input(shape=(self.input_feature * self.num_agents,))
+        out = layers.Dense(128, activation="selu", kernel_initializer="lecun_normal")(inputs)
         out = layers.Dropout(rate=0.5)(out)
         out = layers.BatchNormalization()(out)
-        out = layers.Dense(256, activation="selu", kernel_initializer="lecun_normal")(out)
+        out = layers.Dense(128, activation="selu", kernel_initializer="lecun_normal")(out)
         out = layers.Dropout(rate=0.5)(out)
         out = layers.BatchNormalization()(out)
 
         # using sigmoid activation as action values for
         # for our environment lies between 0 to 1
-        outputs = layers.Dense(self.num_actions*self.num_agents, activation="sigmoid", kernel_regularizer=last_init)(out)
+        outputs = layers.Dense(self.num_actions*self.num_agents,
+                               activation="sigmoid", kernel_regularizer=last_init)(out)
         model = tf.keras.Model(inputs, outputs)
         return model
 
@@ -73,7 +77,8 @@ class DDPolicyGradient(tf.keras.Model):
 
         # State as input, here this state is the observation of all the agents (input_view)
         # hence this state will have information of observation of all the agents
-        state_input = layers.Input(shape=(self.input_view + self.input_feature*num,))
+        # state_input = layers.Input(shape=(self.input_view + self.input_feature*num,))
+        state_input = layers.Input(shape=(self.input_feature * num,))
         state_out = layers.Dense(16, activation="selu", kernel_initializer="lecun_normal")(state_input)
         state_out = layers.BatchNormalization()(state_out)
         state_out = layers.Dense(32, activation="selu", kernel_initializer="lecun_normal")(state_out)
@@ -107,7 +112,7 @@ class DDPolicyGradient(tf.keras.Model):
 
     def sample_step(self, ids, obs, acts, next_obs, rewards):
         """record a step"""
-        self.sample_buffer.record_step(ids, obs, acts, next_obs, rewards, self.num_actions)
+        self.sample_buffer.record_step(ids, obs, acts, next_obs, rewards, self.num_actions, self.ignore_offsets)
 
     def infer_action(self, raw_obs, *args, **kwargs):
         """infer action for a batch of agents
@@ -125,7 +130,8 @@ class DDPolicyGradient(tf.keras.Model):
         view, feature = raw_obs[0], raw_obs[1]
         feature = tf.reshape(feature, [1, -1])
         # Get actions for each agents from respective models and store them in list
-        input_para = np.concatenate((view, feature), axis=1)
+        # input_para = np.concatenate((view, feature), axis=1)
+        input_para = feature
         actions = self.ac_model(input_para)
         return actions
 
@@ -146,9 +152,9 @@ class DDPolicyGradient(tf.keras.Model):
         feature_batch = tf.convert_to_tensor(np.array(sample_buffer.total_features)[batch_indices])
         feature_batch = tf.reshape(feature_batch, [self.batch_size, -1])
         # state_batch
-        view_batch = tf.convert_to_tensor(np.array(sample_buffer.total_view)[batch_indices])
-        view_batch = tf.squeeze(view_batch, axis=1)
-        state_batch = tf.concat([view_batch, feature_batch], axis=1)
+        # view_batch = tf.convert_to_tensor(np.array(sample_buffer.total_view)[batch_indices])
+        # view_batch = tf.squeeze(view_batch, axis=1)
+        # state_batch = tf.concat([view_batch, feature_batch], axis=1)
         # action_batch
         action_batch = tf.convert_to_tensor(np.array(sample_buffer.total_actions)[batch_indices])
         action_batch = tf.squeeze(action_batch, axis=1)
@@ -156,16 +162,18 @@ class DDPolicyGradient(tf.keras.Model):
         reward_batch = tf.convert_to_tensor(np.array(sample_buffer.total_rewards)[batch_indices])
         reward_batch = tf.expand_dims(reward_batch, axis=1)
         # next_state_batch
-        next_view_batch = tf.convert_to_tensor(np.array(sample_buffer.total_next_view)[batch_indices])
-        next_view_batch = tf.squeeze(next_view_batch, axis=1)
+        # next_view_batch = tf.convert_to_tensor(np.array(sample_buffer.total_next_view)[batch_indices])
+        # next_view_batch = tf.squeeze(next_view_batch, axis=1)
         next_feature_batch = tf.convert_to_tensor(np.array(sample_buffer.total_next_features)[batch_indices])
         next_feature_batch = tf.reshape(next_feature_batch, [self.batch_size, -1])
-        next_state_batch = tf.concat([next_view_batch, next_feature_batch], axis=1)
+        # next_state_batch = tf.concat([next_view_batch, next_feature_batch], axis=1)
 
         # Training  and Updating ***critic model***
-        target_action = self.target_ac(next_state_batch)
+        # target_action = self.target_ac(next_state_batch)
+        target_action = self.target_ac(next_feature_batch)
         # Updating and Training of ***actor network**
-        actions = self.ac_model(state_batch)
+        # actions = self.ac_model(state_batch)
+        actions = self.ac_model(feature_batch)
 
         return target_action, feature_batch, action_batch, reward_batch, next_feature_batch, actions
 
@@ -177,16 +185,16 @@ class DDPolicyGradient(tf.keras.Model):
         # train
         # total information
         # state total
-        view_batch = tf.convert_to_tensor(np.array(sample_buffer.total_view)[batch_indices])
-        view_batch = tf.squeeze(view_batch, axis=1)
+        # view_batch = tf.convert_to_tensor(np.array(sample_buffer.total_view)[batch_indices])
+        # view_batch = tf.squeeze(view_batch, axis=1)
         features = tf.concat([features_batch[i] for i in range(len(self.nums_all_agent))], axis=1)
-        state_batch = tf.concat([view_batch, features], axis=1)
+        # state_batch = tf.concat([view_batch, features], axis=1)
 
         # state' total
-        next_view_batch = tf.convert_to_tensor(np.array(sample_buffer.total_next_view)[batch_indices])
-        next_view_batch = tf.squeeze(next_view_batch, axis=1)
+        # next_view_batch = tf.convert_to_tensor(np.array(sample_buffer.total_next_view)[batch_indices])
+        # next_view_batch = tf.squeeze(next_view_batch, axis=1)
         next_features = tf.concat([next_features_batch[i] for i in range(len(self.nums_all_agent))], axis=1)
-        next_state_batch = tf.concat([next_view_batch, next_features], axis=1)
+        # next_state_batch = tf.concat([next_view_batch, next_features], axis=1)
 
         # rewards last action
         rewards = tf.concat([rewards_batch[i] for i in range(len(self.nums_all_agent))], axis=1)
@@ -194,10 +202,12 @@ class DDPolicyGradient(tf.keras.Model):
         # Finding Gradient of loss function
         with tf.GradientTape() as tape:
             # y = self.reward_decay * self.target_cr([next_state_batch, next_actions])
-            y = rewards + self.reward_decay * self.target_cr([next_state_batch, target_actions[0], target_actions[1],
+            # y = rewards + self.reward_decay * self.target_cr([next_state_batch, target_actions[0], target_actions[1],
+            #                                                   target_actions[2], target_actions[3]])
+            y = rewards + self.reward_decay * self.target_cr([next_features, target_actions[0], target_actions[1],
                                                               target_actions[2], target_actions[3]])
-
-            critic_value = self.cr_model([state_batch, actions_batch[0], actions_batch[1], actions_batch[2],
+            # state_batch
+            critic_value = self.cr_model([features, actions_batch[0], actions_batch[1], actions_batch[2],
                                           actions_batch[3]])
 
             critic_loss = tf.math.reduce_mean(tf.math.square(y - critic_value))
@@ -213,13 +223,17 @@ class DDPolicyGradient(tf.keras.Model):
         feature_batch_self = tf.convert_to_tensor(np.array(sample_buffer.total_features)[batch_indices])
         feature_batch_self = tf.reshape(feature_batch_self, [self.batch_size, -1])
         # state_batch this agent
-        state_batch_self = tf.concat([view_batch, feature_batch_self], axis=1)
+        # state_batch_self = tf.concat([view_batch, feature_batch_self], axis=1)
         last_actions_batch = [tf.expand_dims(k, axis=1) for k in last_actions_batch]
         with tf.GradientTape(persistent=True) as tape:
-            action_ = self.ac_model(np.array([state_batch_self[0]]))
+            # [state_batch_self[0]]
+            action_ = self.ac_model(np.array([feature_batch_self[0]]))
             # actions last time with muon policy
-            last_actions = tf.concat([last_actions_batch[i][0] if i != self.handle else action_ for i in range(len(self.nums_all_agent))], axis=1)
-            critic_value = self.cr_model([np.array([state_batch[0]]), np.array(last_actions)])
+            last_actions = [last_actions_batch[i][0] if i != self.handle else action_ for i in range(
+                len(self.nums_all_agent))]
+            # cr_input = [tf.expand_dims(state_batch[0], axis=0)] + last_actions
+            cr_input = [tf.expand_dims(features[0], axis=0)] + last_actions
+            critic_value = self.cr_model(cr_input)
 
         critic_grad = tape.gradient(critic_value, action_)
         actor_grad = tape.gradient(action_, self.ac_model.trainable_variables)
@@ -228,19 +242,70 @@ class DDPolicyGradient(tf.keras.Model):
 
         for k in range(1, self.batch_size):
             with tf.GradientTape(persistent=True) as tape:
-
-                action_ = ac_models[i](np.array([state_batch[:, 5 * i:5 * (i + 1)][k]]))
-
-                critic_value = cr_models[i]([np.array([state_batch[k]]), action_, np.array([actions[:, 1][k]]),
-                                             np.array([actions[:, 2][k]])])
+                # [state_batch_self[k]]
+                action_ = self.ac_model(np.array([feature_batch_self[k]]))
+                # actions last time with muon policy
+                last_actions = [last_actions_batch[i][k] if i != self.handle else action_ for i in
+                                range(len(self.nums_all_agent))]
+                # cr_input = [tf.expand_dims(state_batch[k], axis=0)] + last_actions
+                cr_input = [tf.expand_dims(features[k], axis=0)] + last_actions
+                critic_value = self.cr_model(cr_input)
 
             critic_grad = tape.gradient(critic_value, action_)
-            actor_grad = tape.gradient(action_, ac_models[i].trainable_variables)
+            actor_grad = tape.gradient(action_, self.ac_model.trainable_variables)
 
-            for l in range(len(new_actor_grad)):
-                new_actor_grad[l] = new_actor_grad[l] + critic_grad[0][0] * actor_grad[l]
+            for j in range(len(new_actor_grad)):
+                new_actor_grad[j] = new_actor_grad[j] + critic_grad[0][0] * actor_grad[j]
 
         # Updating gradient network if it is 1st agent
         new_actor_grad = [-1 * element / self.batch_size for element in new_actor_grad]
-        actor_optimizer.apply_gradients(zip(new_actor_grad, ac_models[i].trainable_variables))
+        self.actor_optimizer.apply_gradients(zip(new_actor_grad, self.ac_model.trainable_variables))
 
+    # This update target parameters slowly
+    # Based on rate `tau`, which is much less than one.
+    def update_target(self, tau):
+        new_weights = []
+        target_variables = self.target_cr.weights
+
+        for j, variable in enumerate(self.cr_model.weights):
+            new_weights.append(variable * tau + target_variables[j] * (1 - tau))
+
+        self.target_cr.set_weights(new_weights)
+
+        new_weights = []
+        target_variables = self.target_ac.weights
+
+        for j, variable in enumerate(self.ac_model.weights):
+            new_weights.append(variable * tau + target_variables[j] * (1 - tau))
+
+        self.target_ac.set_weights(new_weights)
+
+    def save(self, dir_name, epoch):
+        """save model to dir
+
+        Parameters
+        ----------
+        dir_name: str
+            name of the directory
+        epoch: int
+        """
+        self.ac_model.save_weights(dir_name + '/actor' + str(self.handle) + '_' + str(epoch) + '.h5')
+        self.cr_model.save_weights(dir_name + '/critic' + str(self.handle) + '_' + str(epoch) + '.h5')
+        self.target_ac.save_weights(dir_name + '/target_actor' + str(self.handle) + '_' + str(epoch) + '.h5')
+        self.target_cr.save_weights(dir_name + '/target_critic' + str(self.handle) + '_' + str(epoch) + '.h5')
+
+    def load(self, dir_name, epoch=0):
+        """save model to dir
+
+        Parameters
+        ----------
+        dir_name: str
+            name of the directory
+        epoch: int
+        """
+        self.ac_model.load_weights(dir_name + '/actor' + str(self.handle) + '_' + str(epoch) + '.h5')
+        self.cr_model.load_weights(dir_name + '/critic' + str(self.handle) + '_' + str(epoch) + '.h5')
+        self.target_ac.load_weights(dir_name + '/target_actor' +
+                                    str(self.handle) + '_' + str(epoch) + '.h5')
+        self.target_cr.load_weights(dir_name + '/target_critic' +
+                                    str(self.handle) + '_' + str(epoch) + '.h5')

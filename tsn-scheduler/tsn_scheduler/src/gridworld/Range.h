@@ -33,7 +33,7 @@ public:
         // do not check boundary
         for(int i = 0; i < nodes_num; i++){
             // 0 ~ cycle-1
-            dx[i] =int(width*act[i]) % 64;
+            dx[i] =int(width*act[i]) % width;
         }
     }
 

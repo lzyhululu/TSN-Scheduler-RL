@@ -53,15 +53,15 @@ int env_get_observation(EnvHandle game, GroupHandle group, float **buffer) {
     return 0;
 }
 
-int env_set_action(EnvHandle game, GroupHandle group, const float *actions) {
+int env_set_action(EnvHandle game, GroupHandle group, const float *actions, bool ignore_offsets) {
     LOG(TRACE) << "env set action.  ";
-    game->set_action(group, actions);
+    game->set_action(group, actions, ignore_offsets);
     return 0;
 }
 
-int env_step(EnvHandle game, int *done) {
+int env_step(EnvHandle game, int *done, bool ignore_offsets) {
     LOG(TRACE) << "env step.  ";
-    game->step(done);
+    game->step(done, ignore_offsets);
     return 0;
 }
 

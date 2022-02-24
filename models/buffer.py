@@ -90,29 +90,29 @@ class EpisodesBuffer:
        this for DDPG
     """
     def __init__(self, capacity):
-        self.total_view = []
+        # self.total_view = []
         self.total_features = []
         self.total_actions = []
         self.total_rewards = []
-        self.total_next_view = []
+        # self.total_next_view = []
         self.total_next_features = []
         self.buffer = {}
         self.capacity = capacity
         self.buff_counter = 0
         self.is_full = False
 
-    def record_step(self, ids, obs, acts, next_obs, rewards, num_actions):
+    def record_step(self, ids, obs, acts, next_obs, rewards, num_actions, ignore_offsets):
         """record transitions (s, a, r, terminal) in a step"""
         buffer = self.buffer
         index = np.random.permutation(len(ids))
 
         if self.is_full:  # extract loop invariant in else part
             idx = self.buff_counter % self.capacity
-            self.total_view[idx] = obs[0].copy()
+            # self.total_view[idx] = obs[0].copy()
             self.total_features[idx] = obs[1].copy()
             self.total_actions[idx] = acts
-            self.total_rewards[idx] = np.sum(rewards)
-            self.total_next_view[idx] = next_obs[0].copy()
+            self.total_rewards[idx] = np.sum(rewards) if not ignore_offsets else rewards[0]
+            # self.total_next_view[idx] = next_obs[0].copy()
             self.total_next_features[idx] = next_obs[1].copy()
             for i in range(len(ids)):
                 entry = buffer.get(ids[i])
@@ -121,11 +121,11 @@ class EpisodesBuffer:
                 entry.full_reset(obs[1][i], acts[num_actions*i: num_actions * i + num_actions],
                                  next_obs[1][i], rewards[i], idx)
         else:
-            self.total_view.append(obs[0].copy())
+            # self.total_view.append(obs[0].copy())
             self.total_features.append(obs[1].copy())
             self.total_actions.append(acts)
             self.total_rewards.append(np.sum(rewards))
-            self.total_next_view.append(next_obs[0].copy())
+            # self.total_next_view.append(next_obs[0].copy())
             self.total_next_features.append(next_obs[1].copy())
             for i in range(len(ids)):
                 i = index[i]

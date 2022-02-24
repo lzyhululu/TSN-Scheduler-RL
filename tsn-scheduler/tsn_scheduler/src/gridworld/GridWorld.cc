@@ -168,22 +168,24 @@ void GridWorld::get_observation(GroupHandle group, float **linear_buffers) {
     memset(feature_buffer.data, 0, sizeof(float) * agent_size * feature_size);
     
     // fill local view for every agents
-    std::vector<float> offset_feature(6);
+    std::vector<float> routes_feature(6);
     #pragma omp parallel for
     for (int i = 0; i < agent_size; i++) {
         Agent *agent = agents[i];
         // get non-spatial feature
-        agent->get_embedding(feature_buffer.data + i*feature_size, embedding_size);
-        // record last action
-        Action last_action = agent->get_action();
-        for (int j = 0; j < nodes_num; j++) {
-            offset_feature[j] = static_cast<float>(last_action[j]);
+        // agent->get_embedding(feature_buffer.data + i*feature_size, embedding_size);
+        // record routes
+        int* routes = agent->get_routes();
+        int n = agent->get_offsets_num();
+        for (int j = 0; j < n; j++) {
+            routes_feature[j] = static_cast<float>(routes[j]);
         }
         // return probability of the offsets in each nodes, should be combined with routes
-        // id + action + reward: 10 + nodes_num + 1
-        memcpy(feature_buffer.data + i*feature_size + embedding_size, &offset_feature[0], sizeof(float) * nodes_num);
+        // routes(len = nodes_num) + pkt_length + worst_delay: nodes_num + 1 + 1
+        memcpy(feature_buffer.data + i*feature_size, &routes_feature[0], sizeof(float) * nodes_num);
         // last reward
-        feature_buffer.at(i, embedding_size + nodes_num) = agent->get_last_reward();
+        feature_buffer.at(i, nodes_num) = static_cast<float>(agent->get_length());
+        feature_buffer.at(i, nodes_num + 1) = static_cast<float>(agent->get_worst_delay());
     }
     int *slots = map.get_slots();
     for (size_t i = 0; i < nodes_num * global_cycle; i++)
@@ -192,30 +194,42 @@ void GridWorld::get_observation(GroupHandle group, float **linear_buffers) {
     }
 }
 
-void GridWorld::set_action(GroupHandle group, const float *actions) {
+void GridWorld::set_action(GroupHandle group, const float *actions, bool ignore_offsets) {
     std::vector<Agent*> &agents = groups[group].get_agents();
     const AgentType &type = groups[group].get_type();
     // action space layout : offsets in each node
     size_t agent_size = agents.size();
-
-    for (int i = 0; i < agent_size; i++) {
-        Agent *agent = agents[i];
-        Action act = (Action) (actions +6*i);
-        agent->set_action(act);
-        // move
-        move_buffer_bound.push_back(MoveAction{agent, act});
+    if(!ignore_offsets){
+        for (int i = 0; i < agent_size; i++) {
+            Agent *agent = agents[i];
+            Action act = (Action) (actions +nodes_num*i);
+            agent->set_action(act, ignore_offsets);
+            // move
+            move_buffer_bound.push_back(MoveAction{agent, act});
+        }
+    }
+    else{
+        for (int i = 0; i < agent_size; i++) {
+            Agent *agent = agents[i];
+            Action act = (Action) (actions + i);
+            agent->set_action(act, ignore_offsets);
+            // move
+            move_buffer_bound.push_back(MoveAction{agent, act});
+        }
     }
 }
 
-void GridWorld::step(int *done) {
+void GridWorld::step(int *done, bool ignore_offsets) {
     const bool stat = false;
 
     LOG(TRACE) << "gridworld step begin.  ";
     size_t group_size  = groups.size();
 
     // do move
-    auto do_move_for_a_buffer = [] (std::vector<MoveAction> &move_buf, Map &map, int nodes_num) {
+    auto do_move_for_a_buffer = [] (std::vector<MoveAction> &move_buf, Map &map, bool ignore_offsets, int nodes_num) {
         //std::random_shuffle(move_buf.begin(), move_buf.end());
+        if(ignore_offsets)
+            nodes_num = 1;
         size_t move_size = move_buf.size();
         for (int j = 0; j < move_size; j++) {
             Action act = move_buf[j].action;
@@ -223,13 +237,13 @@ void GridWorld::step(int *done) {
             int dx[nodes_num];
             // act represent an array of several probability, dx change it to the actual position
             agent->get_type().move_range->num2delta(act, dx, nodes_num);
-            map.do_move(agent, dx);
+            map.do_move(agent, dx, ignore_offsets);
         }
         move_buf.clear();
     };
 
     LOG(TRACE) << "move boundary.  ";
-    do_move_for_a_buffer(move_buffer_bound, map, nodes_num);
+    do_move_for_a_buffer(move_buffer_bound, map, ignore_offsets, nodes_num);
 
     LOG(TRACE) << "calc_reward.  ";
     calc_reward();
@@ -328,8 +342,8 @@ void GridWorld::get_info(GroupHandle group, const char *name, void *void_buffer)
 
 // private utility
 int GridWorld::get_feature_size() {
-    // feature space layout : [embedding, last_action (one hot), last_reward]
-    int feature_space = embedding_size + nodes_num + 1;
+    // feature space layout : [routes, pkt_length, worst_delay]
+    int feature_space = nodes_num + 1 + 1;
     return feature_space;
 }
 

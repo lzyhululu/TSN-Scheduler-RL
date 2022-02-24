@@ -34,10 +34,10 @@ public:
     void init_reward() { next_reward = 0; }
     Reward get_reward()         { return next_reward; }
     void add_reward(Reward add) { next_reward = add; }
-    void calc_global(float value);
+    bool calc_global(float value);
     int *get_slots(){ return map_slots; }
 
-    Reward do_move(Agent *agent, const int delta[2]);
+    Reward do_move(Agent *agent, const int *action_int, bool ignore_offsets);
 
     void render();
 
@@ -57,8 +57,8 @@ private:
         return (PositionInteger)y * w + x;
     }
 
-    inline void clear_area(int length, int height, int cycle, int offsets_n, int *routes, int *offsets);
-    inline void fill_area(int length, int height, int cycle, int offsets_n, int *routes, int *offsets);
+    inline void clear_area(int length, int height, int cycle, int offsets_n, int *routes, int *offsets, bool ignore_offsets=false);
+    inline void fill_area(int length, int height, int cycle, int offsets_n, int *routes, int *offsets, bool ignore_offsets=false);
 };
 
 } // namespace gridworld
