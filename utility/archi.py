@@ -29,7 +29,11 @@ class ArchiGenerater:
         self.pkt_min = None
         self.pkt_max = None
 
-    def node_mat_gene(self, node_links=((1, 2), (2, 3), (2, 4), (2, 6), (4, 5), (6, 5))):
+        # tsn topo and streams generated
+        self.topo_set = None
+        self.stream_set = None
+
+    def node_mat_gene(self, node_links=((0, 1), (1, 2), (1, 3), (1, 5), (3, 4), (5, 4))):
         """
         generate adjecent matric of nodes
         """
@@ -89,7 +93,7 @@ class ArchiGenerater:
 
     def gene_all(self, rand_min=30, rand_max=100,
                  tt_num=30, delay_min=2048, delay_max=4096, pkt_min=72, pkt_max=1526,
-                 node_links=((1, 2), (2, 3), (2, 4), (2, 6), (4, 5), (6, 5))):
+                 node_links=((0, 1), (1, 2), (1, 3), (1, 5), (3, 4), (5, 4))):
         self.node_mat_gene(node_links=node_links)
         self.node_info_gene(rand_min=rand_min, rand_max=rand_max)
         self.tt_flow_gene(tt_num=tt_num, delay_min=delay_min, delay_max=delay_max,
@@ -101,30 +105,48 @@ class ArchiGenerater:
         """
         specify the path to save the file
         """
-        if not os.path.exists('./DataSaved/{}'.format(filename)):
-            os.mkdir('./DataSaved/{}'.format(filename))
+        if not os.path.exists('../DataSaved/{}'.format(filename)):
+            os.mkdir('../DataSaved/{}'.format(filename))
         if self.node_mat is not None:
-            np.save('./DataSaved/{}/node_mat.npy'.format(filename), self.node_mat)
+            np.save('../DataSaved/{}/node_mat.npy'.format(filename), self.node_mat)
         if self.node_info:
             json.dump(self.node_info,
-                      open('./DataSaved/{}/node_info.json'.format(filename), "w"), indent=4)
+                      open('../DataSaved/{}/node_info.json'.format(filename), "w"), indent=4)
         if self.tt_flow:
-            json.dump(self.tt_flow, open('./DataSaved/{}/tt_flow.json'.format(filename), "w"), indent=4)
+            json.dump(self.tt_flow, open('../DataSaved/{}/tt_flow.json'.format(filename), "w"), indent=4)
         data = (self.node_num, self.node_links, self.rand_min, self.rand_max, self.tt_num, self.tt_flow_cycle_option,
                 self.delay_min, self.delay_max, self.pkt_min, self.pkt_max)
-        json.dump(data, open('./DataSaved/{}/basic_parameters.json'.format(filename), "w"), indent=4)
+        json.dump(data, open('../DataSaved/{}/basic_parameters.json'.format(filename), "w"), indent=4)
+
+    def write_topo_to_file(self, filename=""):
+        """
+        specify the path to save the topo
+        """
+        if not os.path.exists('../DataSaved/{}'.format(filename)):
+            os.mkdir('../DataSaved/{}'.format(filename))
+        if self.topo_set:
+            json.dump(self.topo_set, open('../DataSaved/{}/topo_set.json'.format(filename), "w"), indent=4)
+
+    def write_stream_to_file(self, filename=""):
+        """
+        specify the path to save the topo
+        """
+        if not os.path.exists('../DataSaved/{}'.format(filename)):
+            os.mkdir('../DataSaved/{}'.format(filename))
+        if self.stream_set:
+            json.dump(self.stream_set, open('../DataSaved/{}/stream_set.json'.format(filename), "w"), indent=4)
 
     def read_from_file(self, filename):
         """
         specify the path to read the file
         """
-        self.node_mat = np.load('./DataSaved/{}/node_mat.npy'.format(filename))
+        self.node_mat = np.load('../DataSaved/{}/node_mat.npy'.format(filename))
         print('loading existing adjecent matric')
-        self.node_info = json.load(open('./DataSaved/{}/node_info.json'.format(filename)))
+        self.node_info = json.load(open('../DataSaved/{}/node_info.json'.format(filename)))
         print('loading existing node imformation')
-        self.tt_flow = json.load(open('./DataSaved/{}/tt_flow.json'.format(filename)))
+        self.tt_flow = json.load(open('../DataSaved/{}/tt_flow.json'.format(filename)))
         print('loading existing TT_flow imformation')
-        data = json.load(open('./DataSaved/{}/basic_parameters.json'.format(filename)))
+        data = json.load(open('../DataSaved/{}/basic_parameters.json'.format(filename)))
         print('loading existing basic parameters')
         self.node_num, self.node_links, self.rand_min, self.rand_max, self.tt_num, self.tt_flow_cycle_option,\
             self.delay_min, self.delay_max, self.pkt_min, self.pkt_max = data
@@ -132,7 +154,7 @@ class ArchiGenerater:
 
 def main():
     data_gene = ArchiGenerater()
-    links = ((1, 2), (2, 3), (2, 4), (2, 6), (4, 5), (6, 5))
+    links = ((0, 1), (1, 2), (1, 3), (1, 5), (3, 4), (5, 4))
     data_gene.gene_all(rand_min=30, rand_max=100, tt_num=30, delay_min=2, delay_max=20,
                        pkt_min=1, pkt_max=5, node_links=links)
     data_gene.write_to_file(filename='Vehicle_NetWork')

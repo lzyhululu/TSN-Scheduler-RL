@@ -1,5 +1,3 @@
-import numpy as np
-from parameters import *
 
 
 class Edge:

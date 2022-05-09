@@ -1,14 +1,12 @@
 import argparse
 from functools import reduce
 
-parser = argparse.ArgumentParser(description='tsn_marl')
+parser = argparse.ArgumentParser(description='tsn_rl')
 
 # -- Basic information --
 parser.add_argument('--nodes_num', type=int, default=6)
 parser.add_argument('--data_path', type=str, default='Vehicle_NetWork',
                     help='the path archi data saved as ./DataSaved/{}/')
-parser.add_argument('--top_stream_path', type=str, default='Topo_Streams',
-                    help='the path archi data saves as ./DataSaved/{}/')
 
 # unit: ms->time_slot
 parser.add_argument('--slot_per_millisecond', type=int, default=4,

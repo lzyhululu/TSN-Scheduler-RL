@@ -7,7 +7,7 @@ import time
 import logging as log
 import numpy as np
 from models import buffer
-from archi2graph import Graph
+from utility.archi2graph import Graph
 
 
 def generate_map(env, graph: Graph):
@@ -55,14 +55,14 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
         for i in range(n):
             obs[i] = env.get_observation(handles[i])
             ids[i] = env.get_agent_id(handles[i])
-            # let models infer action in parallel (non-blocking)
+            # let rl-models infer action in parallel (non-blocking)
             action = models[i].infer_action(obs[i]).numpy()
             # add gauss noises, delete OUnoises after consideration
             np.clip(action + np.random.normal(0, eps*args.sigma, size=action.shape), 0.0, 0.15, out=action)
             acts[i] = action
 
         for i in range(n):
-            # acts[i] = models[i].fetch_action()  # fetch actions (blocking)
+            # acts[i] = rl-models[i].fetch_action()  # fetch actions (blocking)
             env.set_action(handles[i], acts[i], models[i].ignore_offsets)
 
         # simulate one step
@@ -94,7 +94,7 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
 
         # check return message of previous called non-blocking function sample_step()
         # if args.train:
-        #     for model in models:
+        #     for model in rl-models:
         #         model.check_done()
 
         if step_ct % print_every == 0:
@@ -110,11 +110,11 @@ def play_a_round(env, graph: Graph, handles, models, print_every, train=True, re
         print("===== train =====")
         start_time = time.time()
 
-        # train models in parallel
+        # train rl-models in parallel
         train_parallel(models, n)
 
         # for i in range(n):
-        #     total_loss[i], value[i] = models[i].fetch_train()
+        #     total_loss[i], value[i] = rl-models[i].fetch_train()
 
         train_time = time.time() - start_time
         print("train_time %.2f" % train_time)
@@ -178,19 +178,19 @@ def main():
     from models import DDPolicyGradient
     RLModel = DDPolicyGradient
 
-    # load models
+    # load rl-models
     names = [args.name + "-g0", args.name + "-g1", args.name + "-g2", args.name + "-g3"]
     models = []
 
     # initializing parameters
-    # xx_lr: Learning rate for actor-critic models
+    # xx_lr: Learning rate for actor-critic rl-models
     # reward_decay: Discount factor for future rewards
     # target_update: Used to update target networks
     nums = [env.get_num(handle) for handle in handles]
     for i in range(len(names)):
         model_args = {'eval_obs': eval_obs[i], 'memory_size': 8 * 625, 'critic_lr': 1e-4, 'ignore_offsets': True,
                       'actor_lr': 5e-5, 'reward_decay': 0.95, 'target_update': 0.005, 'nums_all_agent': nums}
-        # models.append(ProcessingModel(env, handles[i], names[i], 20000+i, 1000, RLModel, **model_args))
+        # rl-models.append(ProcessingModel(env, handles[i], names[i], 20000+i, 1000, RLModel, **model_args))
         models.append(RLModel(env, handles[i], names[i], **model_args))
 
     # load if
@@ -221,14 +221,14 @@ def main():
         log.info("round %d\t num: %s\t reward: %s" % (k, num, reward))
         print("round time %.2f  total time %.2f\n" % (time.time() - tic, time.time() - start))
 
-        # save models
+        # save rl-models
         if (k + 1) % args.save_every == 0 and args.train:
             print("save model... ")
             for model in models:
                 model.save(savedir, k)
 
     # send quit command
-    # for model in models:
+    # for model in rl-models:
     #     model.quit()
 
 

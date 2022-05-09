@@ -78,12 +78,12 @@ def route_dijkstra(node_mat):
 
 
 def main():
-    from archi import ArchiGenerater
+    from utility.archi import ArchiGenerater
     data_gene = ArchiGenerater()
     data_gene.read_from_file(filename='Vehicle_NetWork')
     print(data_gene.node_mat)
     routes_dic = route_dijkstra(data_gene.node_mat)
-    json.dump(routes_dic, open('./DataSaved/Vehicle_NetWork/routes.json', "w"), indent=4)
+    json.dump(routes_dic, open('../DataSaved/Vehicle_NetWork/routes.json', "w"), indent=4)
 
 
 if __name__ == '__main__':
