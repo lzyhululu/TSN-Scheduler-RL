@@ -347,142 +347,25 @@ def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0
     return model
 
 
+class ScheT(nn.Module):
+    def __init__(self, *, flow_nums, patch_size, slot_nums, dim,
+                 depth, heads, mlp_dim, pool='cls', dim_head, ):
+        super().__init__()
+        # 一条流量特征包含的信息数，
+
+
 def main():
-    # d_model = 512
-    # vocab = 1000
-    #
-    # x = Variable(torch.LongTensor([[100, 2, 421, 508], [491, 998, 1, 221]]))
-    #
-    # emb = Embeddings(d_model, vocab)
-    # embr = emb(x)
-    # # print(embr)
-    # # print(embr.shape)
-    #
-    # dropout = 0.1
-    # max_len = 60
-    #
-    # x = embr
-    # pe = PositionalEncoding(d_model, dropout, max_len)
-    # pe_result = pe(x)
-    #
-    # # size = 5
-    # # sm = subsequent_mask(size)
-    # # print(sm)
-    #
-    # # x = Variable(torch.randn(5, 5))
-    # # print(x)
-    # #
-    # # mask = Variable(torch.zeros(5, 5))
-    # # print(mask)
-    # #
-    # # y = x.masked_fill(mask == 0, -1e9)
-    # # print(y)
-    #
-    # query = key = value = pe_result
-    # attn, p_attn = attention(query, key, value)
-    # # print(attn)
-    # # print(attn.shape)
-    # # print(p_attn)
-    #
-    # head = 8
-    # embedding_dim = 512
-    # dropout = 0.2
-    # mask = Variable(torch.zeros(8, 4, 4))
-    # mha = MultiHeadedAttention(head, embedding_dim, dropout)
-    # mha_result = mha(query, key, value, mask)
-    #
-    # d_ff = 64
-    # x = mha_result
-    # ff = PositionwiseFeedForward(d_model, d_ff, dropout)
-    # ff_result = ff(x)
-    #
-    # features = d_model
-    # eps = 1e-6
-    #
-    # x = ff_result
-    # ln = LayerNorm(features, eps)
-    # ln_result = ln(x)
-    #
-    # size = d_model
-    # head = 8
-    # dropout = 0.2
-    #
-    # x = pe_result
-    # mask = Variable(torch.zeros(8, 4, 4))
-    # self_attn = MultiHeadedAttention(head, d_model)
-    #
-    # sublayer = lambda i: self_attn(i, i, i, mask)
-    # sc = SublayerConnection(size, dropout)
-    # sc_result = sc(x, sublayer)
-    # # print(sc_result)
-    # # print(sc_result.shape)
-    #
-    # size = d_model = 512
-    # head = 8
-    # d_ff = 64
-    # x = pe_result
-    # c = copy.deepcopy
-    # dropout = 0.2
-    #
-    # self_attn = MultiHeadedAttention(head, d_model)
-    # ff = PositionwiseFeedForward(d_model, d_ff, dropout)
-    # mask = Variable(torch.zeros(8, 4, 4))
-    #
-    # el = EncoderLayer(size, c(self_attn), c(ff), dropout)
-    # N = 8
-    #
-    # en = Encoder(el, N)
-    # en_result = en(x, mask)
-    # # print(en_result)
-    # # print(en_result.shape)
-    #
-    # self_attn = src_attn = MultiHeadedAttention(head, d_model, dropout)
-    #
-    # ff = PositionwiseFeedForward(d_model, d_ff, dropout)
-    #
-    # x = pe_result
-    # memory = en_result
-    # source_mask = target_mask = mask
-    # dl = DecoderLayer(size, self_attn, src_attn, ff, dropout)
-    # dl_result = dl(x, memory, source_mask, target_mask)
-    # # print(dl_result)
-    # attn = MultiHeadedAttention(head, d_model)
-    # ff = PositionwiseFeedForward(d_model, d_ff, dropout)
-    # layer = DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout)
-    # N = 8
-    # x = pe_result
-    # memory = en_result
-    # source_mask = target_mask = mask
-    #
-    # de = Decoder(layer, N)
-    # de_result = de(x, memory, source_mask, target_mask)
-    # # print(de_result)
-    # # print(de_result.shape)
-    # vocab_size = 1000
-    # x = de_result
-    # gen = Generator(d_model, vocab_size)
-    # gen_result = gen(x)
-    # # print(gen_result)
-    # # print(gen_result.shape)
-    # encoder = en
-    # decoder = de
-    # source_embed = nn.Embedding(vocab_size, d_model)
-    # target_embed = nn.Embedding(vocab_size, d_model)
-    # generator = gen
-    #
-    # source = target = Variable(torch.LongTensor([[100, 2, 421, 508], [491, 998, 1, 221]]))
-    #
-    # ed = EncoderDecoder(encoder, decoder, source_embed, target_embed, generator)
-    # ed_result = ed(source, target, source_mask, target_mask)
-    # # print(ed_result)
-    # # print(ed_result.shape)
-    # source_vocab = 11
-    # target_vocab = 11
-    # N = 6
-    #
-    # res = make_model(source_vocab, target_vocab, N)
-    # print(res)
-    pass
+    s = ScheT(
+        flow_nums=120,
+        patch_size=16,
+        slot_nums=512,
+        dim=1024,
+        depth=6,
+        heads=6,
+        mlp_dim=2048,
+        dropout=0.1,
+        emb_dropout=0.1
+    )
 
 
 if __name__ == '__main__':

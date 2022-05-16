@@ -9,7 +9,7 @@ from z3_constraints_solver import add_and_solve_constraints
 def main():
     # 1. 输入拓扑需求和流量需求
     data_gene = ArchiGenerater()
-    sw_links = ((1, 2), (2, 3), (2, 4), (2, 6), (4, 5), (6, 5))
+    sw_links = ((0, 1), (1, 2), (1, 3), (1, 5), (3, 4), (5, 4))
     data_gene.gene_all(rand_min=1, rand_max=1, tt_num=30, delay_min=2, delay_max=20,
                        pkt_min=1, pkt_max=5, node_links=sw_links)
     # 2. 根据拓扑和流量需求生成拓扑文件和流量文件

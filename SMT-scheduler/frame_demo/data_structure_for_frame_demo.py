@@ -1,6 +1,6 @@
 from z3 import *
 
-'''frame_demo的数据结构定义'''
+"""frame_demo的数据结构定义, link和streamInstance只有SMT使用, stream将由transformer和SMT共同使用"""
 
 
 # 链路信息
