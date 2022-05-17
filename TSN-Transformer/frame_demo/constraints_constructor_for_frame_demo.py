@@ -158,7 +158,7 @@ def construct_constraints_for_frame_demo(link_obj_set,
                                               ))
                         i_unactivate = stream_instance_obj_set[i_stream_id][0].unactivate
                         j_unactivate = stream_instance_obj_set[j_stream_id][0].unactivate
-                        formula = Or(formula, i_ab_prio != j_ab_prio, i_unactivate, j_unactivate)
+                        formula = Or(i_unactivate, j_unactivate, formula, i_ab_prio != j_ab_prio)
                         # print(formula)
                         constraint_formula_set.append(formula)
                     else:
@@ -185,7 +185,7 @@ def construct_constraints_for_frame_demo(link_obj_set,
                                               ))
                         i_unactivate = stream_instance_obj_set[i_stream_id][0].unactivate
                         j_unactivate = stream_instance_obj_set[j_stream_id][0].unactivate
-                        formula = Or(formula, i_ab_prio != j_ab_prio, i_unactivate, j_unactivate)
+                        formula = Or(i_unactivate, j_unactivate, formula, i_ab_prio != j_ab_prio)
 
                         constraint_formula_set.append(formula)
 

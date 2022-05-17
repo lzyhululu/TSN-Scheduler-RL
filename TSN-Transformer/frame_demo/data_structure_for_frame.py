@@ -35,8 +35,14 @@ class Stream:
         self.latency_requirement = latency_requirement
         # 这条流的路由信息
         self.route_set = route_set
-        # 在公式栈中只计算activate=True的流量
+        # 在公式栈中只计算unactivate=False的流量
         self.unactivate = True
+        # SMT计算结果存储
+        self.offsets = {}
+        self.priority = {}
+        # transformer的结果存储
+        self.trans_offsets = {}
+        self.trasn_priority = {}
 
 
 # 与window_demo不同，frame_demo中的流实例是

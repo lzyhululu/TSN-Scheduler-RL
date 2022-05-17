@@ -2,6 +2,8 @@ from utility.topo_and_streams_generator import construct_topo_and_streams
 from utility.archi import ArchiGenerater
 from data_handler import init_topo_and_stream_obj_set_for_frame_demo
 from frame_demo.constraints_constructor_for_frame_demo import construct_constraints_for_frame_demo
+from frame_demo.z3_constraints_solver import construct_solver, push_and_solve_constraints
+from transformer_tsn import subsequent_mask
 # torch
 import torch
 # torch中变量封装函数Variable
@@ -43,10 +45,39 @@ def basic_data_generator(file_name, stream_num=60):
                                                                   stream_obj_set,
                                                                   stream_instance_obj_set,
                                                                   sync_precision=1)
-    return stream_obj_set, constraint_formula_set
+
+    # 5. 添加约束
+    print('adding constraints...')
+    solver = construct_solver(constraint_formula_set, timeout=-1)
+    return stream_obj_set, solver
 
 
-def relative_data_gen(stream_obj_set, num_batch, diff_num):
+class Batch:
+    """
+    Object for holding a batch of data with mask during training.
+    创建一个批处理对象
+    """
+
+    def __init__(self, src, trg=None, pad=0):
+        self.src = src
+        self.src_mask = (src != pad).unsqueeze(-2)
+        if trg is not None:
+            self.trg = trg[:, :-1]
+            self.trg_y = trg[:, 1:]
+            self.trg_mask = \
+                self.make_std_mask(self.trg, pad)
+            self.ntokens = (self.trg_y != pad).data.sum()
+
+    @staticmethod
+    def make_std_mask(tgt, pad):
+        """Create a mask to hide padding and future words."""
+        tgt_mask = (tgt != pad).unsqueeze(-2)
+        tgt_mask = tgt_mask & Variable(
+            subsequent_mask(tgt.size(-1)).type_as(tgt_mask.data))
+        return tgt_mask
+
+
+def relative_data_gen(stream_obj_set, solver, num_batch, diff_num):
     """
     stream_obj_set, 流量的集合
     num_batch, 总共输入多少轮次的数据
@@ -62,9 +93,15 @@ def relative_data_gen(stream_obj_set, num_batch, diff_num):
             change_choice.remove(random.choice(list(change_choice)))
         for j in range(diff_num):
             change_choice.add(random.choice(reserve_choice))
-        stream_choice = [stream_obj_set[i] for i in change_choice]
+        for j in change_choice:
+            stream_obj_set[j].unactivate = False
         # print(change_choice)
-        yield stream_choice, change_choice
+        result = push_and_solve_constraints(solver, stream_obj_set, change_choice, timeout=1 * 10 * 60 * 1000)
+        if not result:
+            continue
+        yield Batch(stream_obj_set, change_choice)
+        for j in change_choice:
+            stream_obj_set[j].unactivate = True
 
 
 def run_epoch(data_iter, constraint_formula_set, model, loss_compute):
@@ -89,36 +126,38 @@ def run_epoch(data_iter, constraint_formula_set, model, loss_compute):
     return total_loss / total_tokens
 
 
-def run(model, loss, epochs=1, relative_epochs=10, diff_num=1):
-    """
-    生成epochs次主环境，每个环境衍生出relative_epochs个相似环境
-    相似环境中改变diff_num条流量
-    """
-    #
-    for epoch in range(epochs):
-        file_name = 'main_env_{}'.format(epoch)
-        # stream num 至少大于20,生成相似环境时会使用20条流量作为备选流量进行替换
-        stream_obj_set, constraint_formula_set = basic_data_generator(file_name=file_name)
-
-        for relative_epoch in range(relative_epochs):
-            model.train()
-            run_epoch(relative_data_gen(stream_obj_set, relative_epochs, diff_num), constraint_formula_set, model, loss)
-            model.eval()
-            run_epoch(relative_data_gen(stream_obj_set, 5, diff_num), constraint_formula_set, model, loss)
-
-    model.eval()
-
-    source = Variable(torch.LongTensor([[1, 3, 2, 5, 4, 6, 7, 8, 9, 10]]))
-    source_mask = Variable(torch.ones(1, 1, 10))
-
-    result = greedy_decode(model, source, source_mask, max_len=10, start_symbol=1)
-    print(result)
+# def run(model, loss, epochs=1, relative_epochs=10, diff_num=1):
+#     """
+#     生成epochs次主环境，每个环境衍生出relative_epochs个相似环境
+#     相似环境中改变diff_num条流量
+#     模型设置为最多支持输入160条
+#     """
+#     #
+#     for epoch in range(epochs):
+#         file_name = 'main_env_{}'.format(epoch)
+#         # stream num 至少大于20,生成相似环境时会使用20条流量作为备选流量进行替换
+#         stream_obj_set, constraint_formula_set = basic_data_generator(file_name=file_name)
+#
+#         for relative_epoch in range(relative_epochs):
+#             model.train()
+#             run_epoch(relative_data_gen(stream_obj_set, relative_epochs, diff_num), constraint_formula_set, model, loss)
+#             model.eval()
+#             run_epoch(relative_data_gen(stream_obj_set, 5, diff_num), constraint_formula_set, model, loss)
+#
+#     model.eval()
+#
+#     source = Variable(torch.LongTensor([[1, 3, 2, 5, 4, 6, 7, 8, 9, 10]]))
+#     source_mask = Variable(torch.ones(1, 1, 10))
+#
+#     result = greedy_decode(model, source, source_mask, max_len=10, start_symbol=1)
+#     print(result)
 
 
 def main():
-    stream_obj, formula_set = basic_data_generator(file_name='main_env_1', stream_num=60)
-    g = relative_data_gen(stream_obj, 10, diff_num=1)
-    run_epoch(g, formula_set, 0, 0)
+    stream_obj, solver = basic_data_generator(file_name='main_env_1', stream_num=30)
+    g = relative_data_gen(stream_obj, solver, 10, diff_num=1)
+    next(g)
+    run_epoch(g, solver, 0, 0)
     return
 
 
