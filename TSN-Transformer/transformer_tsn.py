@@ -10,6 +10,24 @@ import copy
 # torch中变量封装函数Variable
 from torch.autograd import Variable
 
+import time
+import re
+from z3 import *
+
+
+# 流量的嵌入层
+class FlowEmbeddings(nn.Module):
+    def __init__(self, feature_nums, dim):
+        super().__init__()
+        self.flow_embedding = nn.Linear(feature_nums, dim)
+        self.dim = dim
+        # self.norm = LayerNorm(dim)
+
+    def forward(self, feature_set):
+        x = self.flow_embedding(feature_set)
+        return x
+        # return self.norm(x)
+
 
 # Embeddings 文本嵌入层，有两个一模一样的嵌入层，共享参数
 class Embeddings(nn.Module):
@@ -31,7 +49,7 @@ class Embeddings(nn.Module):
 class PositionalEncoding(nn.Module):
     """Implement the PE function."""
 
-    def __init__(self, d_model, dropout, max_len=5000):
+    def __init__(self, d_model, dropout, max_len=120):
         """
         位置编码器类的初始化函数
 
@@ -77,8 +95,8 @@ def attention(query, key, value, mask=None, dropout=None):
     # 按照注意力计算公式，query与key转置相乘 除以一个缩放系数
     scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
     # 判断是否使用，mask = 0 的位置用很小的数值填充，不可能被选中
-    if mask is not None:
-        scores = scores.masked_fill(mask == 0, -1e9)
+    # if mask is not None:
+    #     scores = scores.masked_fill(mask == 0, -1e9)
     # softmax 得到注意力张量
     p_attn = F.softmax(scores, dim=-1)
     # 注意dropout是对象
@@ -108,9 +126,9 @@ class MultiHeadedAttention(nn.Module):
 
     def forward(self, query, key, value, mask=None):
         """Implements Figure 2"""
-        if mask is not None:
-            # Same mask applied to all h heads.
-            mask = mask.unsqueeze(0)
+        # if mask is not None:
+        #     # Same mask applied to all h heads.
+        #     mask = mask.unsqueeze(1)
         # 代表有多少样本
         batch_size = query.size(0)
 
@@ -292,27 +310,38 @@ class EncoderDecoder(nn.Module):
     Base for this and many other models.
     """
 
-    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator):
+    # def __init__(self, encoder, decoder, src_embed, tgt_embed, generator):
+    #     super(EncoderDecoder, self).__init__()
+    #     self.encoder = encoder
+    #     self.decoder = decoder
+    #     self.src_embed = src_embed  # input embedding module(input embedding + positional encode)
+    #     self.tgt_embed = tgt_embed  # ouput embedding module
+    #     self.generator = generator  # output generation module
+
+    def __init__(self, encoder, src_embed, generator):
         super(EncoderDecoder, self).__init__()
         self.encoder = encoder
-        self.decoder = decoder
         self.src_embed = src_embed  # input embedding module(input embedding + positional encode)
-        self.tgt_embed = tgt_embed  # ouput embedding module
         self.generator = generator  # output generation module
 
-    def forward(self, src, tgt, src_mask, tgt_mask):
+    # def forward(self, src, tgt, src_mask, tgt_mask):
+    #     """Take in and process masked src and target sequences."""
+    #     memory = self.encode(src, src_mask)
+    #     res = self.decode(memory, src_mask, tgt, tgt_mask)
+    #     return res
+
+    def forward(self, src, src_mask):
         """Take in and process masked src and target sequences."""
         memory = self.encode(src, src_mask)
-        res = self.decode(memory, src_mask, tgt, tgt_mask)
-        return res
+        return memory
 
     def encode(self, src, src_mask):
         src_embeds = self.src_embed(src)
         return self.encoder(src_embeds, src_mask)
 
-    def decode(self, memory, src_mask, tgt, tgt_mask):
-        target_embeds = self.tgt_embed(tgt)
-        return self.decoder(target_embeds, memory, src_mask, tgt_mask)
+    # def decode(self, memory, src_mask, tgt, tgt_mask):
+    #     target_embeds = self.tgt_embed(tgt)
+    #     return self.decoder(target_embeds, memory, src_mask, tgt_mask)
 
 
 # Full Model, 构建完整的用于训练的模型
@@ -347,25 +376,295 @@ def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0
     return model
 
 
-class ScheT(nn.Module):
-    def __init__(self, *, flow_nums, patch_size, slot_nums, dim,
-                 depth, heads, mlp_dim, pool='cls', dim_head, ):
-        super().__init__()
-        # 一条流量特征包含的信息数，
+def ScheT(feature_nums, target_size, slot_nums, dim, depth, heads, mlp_dim, dropout=0.):
+    """
+    flow_nums, 流量一次输入数量的最大值
+    target_size, 一条流量结果的参数个数
+    feature_nums, 表示一条流量特征的参数个数
+    slot_nums, 结果要映射到多少个维度上,时隙
+    dim,
+    depth, 多少层
+    heads, 多头注意力机制要多少个头
+    mlp_dim, 前馈层
+    """
+    c = copy.deepcopy
+    attn = MultiHeadedAttention(heads, dim)
+    ff = PositionwiseFeedForward(dim, mlp_dim, dropout)
+    # position = PositionalEncoding(dim, dropout)
+    # model = EncoderDecoder(
+    #     Encoder(EncoderLayer(dim, c(attn), c(ff), dropout), depth),
+    #     Decoder(DecoderLayer(dim, c(attn), c(attn), c(ff), dropout), depth),
+    #     FlowEmbeddings(feature_nums, dim),
+    #     FlowEmbeddings(target_size, dim),
+    #     Generator(dim, slot_nums * target_size))
+    model = EncoderDecoder(
+        Encoder(EncoderLayer(dim, c(attn), c(ff), dropout), depth),
+        FlowEmbeddings(feature_nums, dim),
+        # FlowEmbeddings(target_size, dim),
+        Generator(dim, slot_nums * target_size))
+
+    # This was important from their code.
+    # Initialize parameters with Glorot / fan_avg.
+    for p in model.parameters():
+        if p.dim() > 1:
+            nn.init.xavier_uniform_(p)
+    return model
+
+
+class NoamOpt:
+    """Optim wrapper that implements rate."""
+
+    def __init__(self, model_size, factor, warmup, optimizer):
+        self.optimizer = optimizer
+        self._step = 0
+        self.warmup = warmup
+        self.factor = factor
+        self.model_size = model_size
+        self._rate = 0
+
+    def step(self):
+        """Update parameters and rate"""
+        self._step += 1
+        rate = self.rate()
+        for p in self.optimizer.param_groups:
+            p['lr'] = rate
+        self._rate = rate
+        self.optimizer.step()
+
+    def rate(self, step=None):
+        """Implement `lrate` above"""
+        if step is None:
+            step = self._step
+        return self.factor * \
+               (self.model_size ** (-0.5) *
+                min(step ** (-0.5), step * self.warmup ** (-1.5)))
+
+
+def get_std_opt(model):
+    return NoamOpt(model.src_embed.dim, 2, 4000,
+                   torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
+
+
+class SimpleLossCompute:
+    """A simple loss compute and train function."""
+
+    def __init__(self, generator, opt=None):
+        self.generator = generator
+        self.opt = opt
+        self.criterion = nn.KLDivLoss(size_average=False)
+
+    def __call__(self, x, y, norm):
+        x = self.generator(x)
+        true_dist = x.data.clone().view(-1, 512)
+        true_dist.fill_(0.0 / (10 - 2))
+        target = y[:, :, 3].contiguous().view(-1)
+        true_dist.scatter_(1, target.data.unsqueeze(1).type(torch.int64), 1.0)
+        true_dist[:, 0] = 0
+        mask = torch.nonzero(target.data == 0)
+        if mask.dim() > 0:
+            true_dist.index_fill_(0, mask.squeeze(), 0.0)
+        loss = self.criterion(x.contiguous().view(-1, 512), Variable(true_dist, requires_grad=False)) / norm
+        loss.backward()
+        if self.opt is not None:
+            self.opt.step()
+            self.opt.optimizer.zero_grad()
+        return loss.item() * norm
+
+
+class FrameLossCompute:
+    """A simple loss compute and train function."""
+
+    def __init__(self, generator, opt=None):
+        self.generator = generator
+        self.opt = opt
+
+    def __call__(self, output, ac_stream_ids, norm, stream_obj_set, solver):
+        x = self.generator(output)
+        _, time_slots = torch.max(x, dim=2)
+        loss = torch.FloatTensor(0)
+        s = solver
+        for epoch_i in time_slots:
+            for episode in time_slots:
+                s.push()
+        for stream_obj in stream_obj_set:
+            if not stream_obj.unactivate:
+                un_active = Bool(f'A_{stream_obj.stream_id}')
+                s.add(Not(un_active))
+            else:
+                un_active = Bool(f'A_{stream_obj.stream_id}')
+                s.add(un_active)
+
+        declare_set = []
+        unknown_reason = ''
+        # 开始计时
+        start = time.time_ns()
+        # 判断是否有可行解
+        sat_or_not = s.check()
+        if sat_or_not == sat:
+            model = s.model()
+            end = time.time_ns()
+            # print("end time: %f" % end)
+            # 输出变量声明的集合
+            declare_set = _parse_z3_model(model)
+        elif sat_or_not == unsat:
+            # 输出时间
+            end = time.time_ns()
+            # 输出一个空的declare_set
+        elif sat_or_not == unknown:
+            end = time.time_ns()
+            # 输出一个空的declare_set
+            # 输出unknown的原因
+            unknown_reason = s.reason_unknown()
+            pass
+        s.pop()
+        # time_used_in_second = (end - start) / 1000000000
+        # print('time_used:')
+        # print(time_used_in_second)
+        result = []
+        if str(sat_or_not) == 'sat':
+            # frame_demo的结果变量分为两类
+            # 1. offset，命名：O_stream_id^(link_id)
+            # 2. prio，命名：P_stream_id^(link_id)
+            for declare in declare_set:
+                name = declare['name']
+                if name == 'p':
+                    continue
+                stream_id = int(name.split('_')[1].split('^')[0])
+                if re.match(r'A', name) or stream_id not in ac_stream_ids:
+                    continue
+                value = declare['value']
+                value = str(value)
+                if re.match(r'O', name):
+                    # 解析link_id
+                    link_id = int(name.split('(')[1].split(')')[0])
+                    stream_obj_set[stream_id].offsets[link_id] = int(value)
+                elif re.match(r'P', name):
+                    # 解析link_id
+                    link_id = int(name.split('(')[1].split(')')[0])
+                    stream_obj_set[stream_id].priority[link_id] = int(value)
+        loss.backward()
+        if self.opt is not None:
+            self.opt.step()
+            self.opt.optimizer.zero_grad()
+        return loss.item() * norm
 
 
 def main():
-    s = ScheT(
-        flow_nums=120,
-        patch_size=16,
-        slot_nums=512,
-        dim=1024,
-        depth=6,
-        heads=6,
-        mlp_dim=2048,
-        dropout=0.1,
-        emb_dropout=0.1
-    )
+    x = Variable(torch.FloatTensor([[1, 12, 12, 1, 3, 5, 7, 0, 0, 0], [1, 24, 24, 7, 1, 6, 3, 0, 0, 0]]))
+
+    emb = FlowEmbeddings(10, 512)
+    embr = emb(x)
+    print(embr)
+    print(embr.shape)
+    d_model = 512
+    dropout = 0.1
+    max_len = 60
+    mask = torch.Tensor([[[True, True, True, True, True, True, True, False, False, False]],
+                         [[True, True, True, True, True, True, True, False, False, False]]])
+    query = key = value = embr
+    attn, p_attn = attention(query, key, value, mask)
+    print(attn)
+    print(attn.shape)
+    print(p_attn)
+    #
+    # head = 8
+    # embedding_dim = 512
+    # dropout = 0.2
+    # mask = Variable(torch.zeros(8, 4, 4))
+    # mha = MultiHeadedAttention(head, embedding_dim, dropout)
+    # mha_result = mha(query, key, value, mask)
+    #
+    # d_ff = 64
+    # x = mha_result
+    # ff = PositionwiseFeedForward(d_model, d_ff, dropout)
+    # ff_result = ff(x)
+    #
+    # features = d_model
+    # eps = 1e-6
+    #
+    # x = ff_result
+    # ln = LayerNorm(features, eps)
+    # ln_result = ln(x)
+    #
+    # size = d_model
+    # head = 8
+    # dropout = 0.2
+    #
+    # x = pe_result
+    # mask = Variable(torch.zeros(8, 4, 4))
+    # self_attn = MultiHeadedAttention(head, d_model)
+    #
+    # sublayer = lambda i: self_attn(i, i, i, mask)
+    # sc = SublayerConnection(size, dropout)
+    # sc_result = sc(x, sublayer)
+    # # print(sc_result)
+    # # print(sc_result.shape)
+    #
+    # size = d_model = 512
+    # head = 8
+    # d_ff = 64
+    # x = pe_result
+    # c = copy.deepcopy
+    # dropout = 0.2
+    #
+    # self_attn = MultiHeadedAttention(head, d_model)
+    # ff = PositionwiseFeedForward(d_model, d_ff, dropout)
+    # mask = Variable(torch.zeros(8, 4, 4))
+    #
+    # el = EncoderLayer(size, c(self_attn), c(ff), dropout)
+    # N = 8
+    #
+    # en = Encoder(el, N)
+    # en_result = en(x, mask)
+    # # print(en_result)
+    # # print(en_result.shape)
+    #
+    # self_attn = src_attn = MultiHeadedAttention(head, d_model, dropout)
+    #
+    # ff = PositionwiseFeedForward(d_model, d_ff, dropout)
+    #
+    # x = pe_result
+    # memory = en_result
+    # source_mask = target_mask = mask
+    # dl = DecoderLayer(size, self_attn, src_attn, ff, dropout)
+    # dl_result = dl(x, memory, source_mask, target_mask)
+    # # print(dl_result)
+    # attn = MultiHeadedAttention(head, d_model)
+    # ff = PositionwiseFeedForward(d_model, d_ff, dropout)
+    # layer = DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout)
+    # N = 8
+    # x = pe_result
+    # memory = en_result
+    # source_mask = target_mask = mask
+    #
+    # de = Decoder(layer, N)
+    # de_result = de(x, memory, source_mask, target_mask)
+    # # print(de_result)
+    # # print(de_result.shape)
+    # vocab_size = 1000
+    # x = de_result
+    # gen = Generator(d_model, vocab_size)
+    # gen_result = gen(x)
+    # # print(gen_result)
+    # # print(gen_result.shape)
+    # encoder = en
+    # decoder = de
+    # source_embed = nn.Embedding(vocab_size, d_model)
+    # target_embed = nn.Embedding(vocab_size, d_model)
+    # generator = gen
+    #
+    # source = target = Variable(torch.LongTensor([[100, 2, 421, 508], [491, 998, 1, 221]]))
+    #
+    # ed = EncoderDecoder(encoder, decoder, source_embed, target_embed, generator)
+    # ed_result = ed(source, target, source_mask, target_mask)
+    # # print(ed_result)
+    # # print(ed_result.shape)
+    # source_vocab = 11
+    # target_vocab = 11
+    # N = 6
+    #
+    # res = make_model(source_vocab, target_vocab, N)
+    # print(res)
 
 
 if __name__ == '__main__':

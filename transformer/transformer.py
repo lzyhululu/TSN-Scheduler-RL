@@ -110,7 +110,7 @@ class MultiHeadedAttention(nn.Module):
         """Implements Figure 2"""
         if mask is not None:
             # Same mask applied to all h heads.
-            mask = mask.unsqueeze(0)
+            mask = mask.unsqueeze(1)
         # 代表有多少样本
         batch_size = query.size(0)
 
@@ -365,18 +365,18 @@ def main():
     # pe = PositionalEncoding(d_model, dropout, max_len)
     # pe_result = pe(x)
     #
-    # # size = 5
-    # # sm = subsequent_mask(size)
-    # # print(sm)
+    # size = 5
+    # sm = subsequent_mask(size)
+    # print(sm)
     #
-    # # x = Variable(torch.randn(5, 5))
-    # # print(x)
-    # #
-    # # mask = Variable(torch.zeros(5, 5))
-    # # print(mask)
-    # #
-    # # y = x.masked_fill(mask == 0, -1e9)
-    # # print(y)
+    # x = Variable(torch.randn(5, 5))
+    # print(x)
+    #
+    # mask = Variable(torch.zeros(5, 5))
+    # print(mask)
+    #
+    # y = x.masked_fill(mask == 0, -1e9)
+    # print(y)
     #
     # query = key = value = pe_result
     # attn, p_attn = attention(query, key, value)

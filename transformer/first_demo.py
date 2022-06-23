@@ -25,7 +25,7 @@ def data_generator(V, batch, num_batch):
         yield Batch(source, target)
 
 
-V = 11
+V = 10
 batch_size = 20
 num_batch = 30
 
@@ -41,29 +41,20 @@ criterion = LabelSmoothing(size=V, padding_idx=0, smoothing=0.0)
 
 loss = SimpleLossCompute(model.generator, criterion, model_optimizer)
 
-crit = LabelSmoothing(size=5, padding_idx=0, smoothing=0.5)
-predict = Variable(torch.FloatTensor([[0, 0.2, 0.7, 0.1, 0],
-                                      [0, 0.2, 0.7, 0.1, 0],
-                                      [0, 0.2, 0.7, 0.1, 0]]))
-target = Variable(torch.LongTensor([2, 1, 0]))
-crit(predict, target)
-plt.imshow(crit.true_dist)
-plt.show()
 
-
-def run(model, loss, epochs=30):
+def run(model, loss, epochs=5):
     for epoch in range(epochs):
         model.train()
-        run_epoch(data_generator(V, 8, 20), model, loss)
+        run_epoch(data_generator(V, 10, 20), model, loss)
         model.eval()
-        run_epoch(data_generator(V, 8, 5), model, loss)
+        run_epoch(data_generator(V, 10, 5), model, loss)
 
     model.eval()
 
-    source = Variable(torch.LongTensor([[1, 3, 2, 5, 4, 6, 7, 8, 9, 10]]))
-    source_mask = Variable(torch.ones(1, 1, 10))
+    source = Variable(torch.LongTensor([[1, 3, 2, 5, 4, 6, 7, 8, 9]]))
+    source_mask = Variable(torch.ones(1, 1, 9))
 
-    result = greedy_decode(model, source, source_mask, max_len=10, start_symbol=1)
+    result = greedy_decode(model, source, source_mask, max_len=9, start_symbol=1)
     print(result)
 
 

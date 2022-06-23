@@ -50,7 +50,7 @@ def push_and_solve_constraints(solver, stream_obj_set, ac_stream_ids, timeout=-1
     if sat_or_not == sat:
         model = s.model()
         end = time.time_ns()
-        print("end time: %f" % end)
+        # print("end time: %f" % end)
         # 输出变量声明的集合
         declare_set = _parse_z3_model(model)
     elif sat_or_not == unsat:
@@ -64,9 +64,10 @@ def push_and_solve_constraints(solver, stream_obj_set, ac_stream_ids, timeout=-1
         unknown_reason = s.reason_unknown()
         pass
     s.pop()
-    time_used_in_second = (end - start) / 1000000000
-    print('time_used:')
-    print(time_used_in_second)
+    # time_used_in_second = (end - start) / 1000000000
+    # print('time_used:')
+    # print(time_used_in_second)
+    result = []
     if str(sat_or_not) == 'sat':
         # frame_demo的结果变量分为两类
         # 1. offset，命名：O_stream_id^(link_id)
@@ -88,9 +89,17 @@ def push_and_solve_constraints(solver, stream_obj_set, ac_stream_ids, timeout=-1
                 # 解析link_id
                 link_id = int(name.split('(')[1].split(')')[0])
                 stream_obj_set[stream_id].priority[link_id] = int(value)
-
-    # 返回是否成功
-    return str(sat_or_not) == 'sat'
+        return True
+        # for stream_id in ac_stream_ids:
+        #     res = [0 for _ in range(21)]
+        #     for i in range(len(stream_obj_set[stream_id].route_set)):
+        #         link_id = stream_obj_set[stream_id].route_set[i]
+        #         res[3 * i] = link_id
+        #         res[3 * i + 1] = stream_obj_set[stream_id].priority[link_id]
+        #         res[3 * i + 2] = stream_obj_set[stream_id].offsets[link_id]
+        #     result.append(res)
+    # 返回结果,空的代表失败
+    return result
 
 
 def _main():

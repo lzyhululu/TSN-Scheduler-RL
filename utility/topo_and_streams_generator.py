@@ -60,7 +60,7 @@ def _generate_topo_graph(sw_num,
     # 第四步，添加终端节点与交换机节点之间的链路
     for sw in sw_id_set:
         es_set = G.nodes[sw]['es_set']
-        print(es_set)
+        # print(es_set)
         for es in es_set:
             G.add_edge(sw, es, link_id=link_id)
             link_id += 1
@@ -71,7 +71,7 @@ def _generate_topo_graph(sw_num,
     if show_topo_graph:
         _show_topology_graph(G)
 
-    print(G)
+    # print(G)
     # 返回生成的拓扑图
     return G
 

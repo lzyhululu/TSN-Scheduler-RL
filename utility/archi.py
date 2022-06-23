@@ -45,7 +45,7 @@ class ArchiGenerater:
             judge_node |= i
         if self.node_num != len(judge_node):
             self.node_num = len(judge_node)
-            print('node num changed to {}, existing node: {}'.format(len(judge_node), judge_node))
+            # print('node num changed to {}, existing node: {}'.format(len(judge_node), judge_node))
         self.node_links = node_links
         self.node_mat = np.full((self.node_num, self.node_num), inf)
         for link in self.node_links:
@@ -98,7 +98,7 @@ class ArchiGenerater:
         self.node_info_gene(rand_min=rand_min, rand_max=rand_max)
         self.tt_flow_gene(tt_num=tt_num, delay_min=delay_min, delay_max=delay_max,
                           pkt_min=pkt_min, pkt_max=pkt_max)
-        print("function ArchiGenerator gene_all finish")
+        # print("function ArchiGenerator gene_all finish")
         return self.node_mat, self.node_info, self.tt_flow
 
     def write_to_file(self, filename=""):
