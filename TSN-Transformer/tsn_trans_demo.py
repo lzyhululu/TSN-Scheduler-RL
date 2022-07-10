@@ -101,8 +101,9 @@ def relative_data_gen(stream_obj_set, solver, batch, num_batch, diff_num):
     # print(stream_features)
     # 使用20条流量作为备选流量 100 20
     length = len(stream_obj_set)
-    basic_choice = set(range(length - 20))
-    reserve_choice = list(range(length - 20, length))
+    act_len = length - 20
+    basic_choice = set(range(act_len))
+    reserve_choice = list(range(act_len, length))
     for _ in range(num_batch):
         batch_data = []
         batch_result = []
@@ -113,12 +114,15 @@ def relative_data_gen(stream_obj_set, solver, batch, num_batch, diff_num):
             change_choice = copy.deepcopy(basic_choice)
             for j in range(diff_num):
                 change_choice.remove(random.choice(list(change_choice)))
-            for j in range(diff_num):
+            while len(change_choice) < act_len:
                 change_choice.add(random.choice(reserve_choice))
             for j in change_choice:
                 stream_obj_set[j].unactivate = False
             # print(change_choice)
+            start = time.time_ns()
+            # schedulability verification with extra constraints
             result = push_and_solve_constraints(solver, stream_obj_set, change_choice, timeout=1 * 10 * 60 * 1000)
+            end = time.time_ns()
             if not result:
                 k -= 1
                 continue
@@ -138,7 +142,7 @@ def relative_data_gen(stream_obj_set, solver, batch, num_batch, diff_num):
 
 def run_epoch(data_iter, model, loss_compute, stream_obj_set, solver):
     """Standard Training and Logging Function"""
-    start = time.time()
+    # start = time.time()
     total_tokens = 0
     total_loss = 0
     tokens = 0
@@ -151,9 +155,9 @@ def run_epoch(data_iter, model, loss_compute, stream_obj_set, solver):
         total_tokens += batch.ntokens
         tokens += batch.ntokens
         if i % 50 == 1:
-            elapsed = time.time() - start
-            print("Epoch Step: %d Loss: %f Tokens per Sec: %f" % (i, loss / batch.ntokens, tokens / elapsed))
-            start = time.time()
+            # elapsed = time.time() - start
+            # print("Epoch Step: %d Loss: %f Tokens per Sec: %f" % (i, loss / batch.ntokens, tokens / elapsed))
+            # start = time.time()
             tokens = 0
     return total_loss / total_tokens
 
@@ -167,7 +171,7 @@ def run(model, loss, epochs=1000, relative_epochs=2, diff_num=3):
     for epoch in range(epochs):
         file_name = 'main_env_{}'.format(epoch)
         # stream num 至少大于20,生成相似环境时会使用20条流量作为备选流量进行替换
-        stream_obj_set, basic_solver = basic_data_generator(file_name=file_name, stream_num=70)
+        stream_obj_set, basic_solver = basic_data_generator(file_name=file_name, stream_num=30)
 
         model.train()
         run_epoch(relative_data_gen(stream_obj_set, basic_solver, relative_epochs, 10, diff_num), model,

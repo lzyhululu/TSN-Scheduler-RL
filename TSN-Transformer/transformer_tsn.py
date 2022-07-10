@@ -300,7 +300,9 @@ class Generator(nn.Module):
         self.proj = nn.Linear(d_model, vocab)
 
     def forward(self, x):
-        return F.log_softmax(self.proj(x), dim=-1)
+        return self.proj(x)
+        # return F.log_softmax(self.proj(x), dim=-1)
+        # return F.softmax(self.proj(x), dim=-1)
 
 
 # Model Architecture, 编码器，解码器结构
@@ -477,76 +479,114 @@ class FrameLossCompute:
     def __init__(self, generator, opt=None):
         self.generator = generator
         self.opt = opt
+        # 特定环境拟合版本使用
+        self.criterion = nn.KLDivLoss(size_average=False)
 
     def __call__(self, output, ac_stream_ids, norm, stream_obj_set, solver):
+        # log_softmax -> softmax:
+        # log_softmax: selected
+        epoch_num = len(ac_stream_ids)
+        # establish Mask layer
+        masks = None
+        for epoch_idx in range(epoch_num):
+            masks = output.data.clone()
+            flow_idx = 0
+            for i in ac_stream_ids[epoch_idx]:
+                masks[epoch_idx, flow_idx, stream_obj_set[i].period:] = 0
+                masks[epoch_idx, flow_idx, :stream_obj_set[i].period] = 1
+                flow_idx += 1
         x = self.generator(output)
+        x.masked_fill_(masks == 0, -1e9)
+        x = F.log_softmax(x, dim=-1)
+        flow_num = len(ac_stream_ids[0])
         _, time_slots = torch.max(x, dim=2)
-        loss = torch.FloatTensor(0)
         s = solver
-        for epoch_i in time_slots:
-            for episode in time_slots:
-                s.push()
-        for stream_obj in stream_obj_set:
-            if not stream_obj.unactivate:
-                un_active = Bool(f'A_{stream_obj.stream_id}')
-                s.add(Not(un_active))
-            else:
-                un_active = Bool(f'A_{stream_obj.stream_id}')
-                s.add(un_active)
 
-        declare_set = []
-        unknown_reason = ''
-        # 开始计时
-        start = time.time_ns()
-        # 判断是否有可行解
-        sat_or_not = s.check()
-        if sat_or_not == sat:
-            model = s.model()
-            end = time.time_ns()
-            # print("end time: %f" % end)
-            # 输出变量声明的集合
-            declare_set = _parse_z3_model(model)
-        elif sat_or_not == unsat:
-            # 输出时间
-            end = time.time_ns()
-            # 输出一个空的declare_set
-        elif sat_or_not == unknown:
-            end = time.time_ns()
-            # 输出一个空的declare_set
-            # 输出unknown的原因
-            unknown_reason = s.reason_unknown()
-            pass
-        s.pop()
-        # time_used_in_second = (end - start) / 1000000000
-        # print('time_used:')
-        # print(time_used_in_second)
-        result = []
-        if str(sat_or_not) == 'sat':
-            # frame_demo的结果变量分为两类
-            # 1. offset，命名：O_stream_id^(link_id)
-            # 2. prio，命名：P_stream_id^(link_id)
-            for declare in declare_set:
-                name = declare['name']
-                if name == 'p':
-                    continue
-                stream_id = int(name.split('_')[1].split('^')[0])
-                if re.match(r'A', name) or stream_id not in ac_stream_ids:
-                    continue
-                value = declare['value']
-                value = str(value)
-                if re.match(r'O', name):
-                    # 解析link_id
-                    link_id = int(name.split('(')[1].split(')')[0])
-                    stream_obj_set[stream_id].offsets[link_id] = int(value)
-                elif re.match(r'P', name):
-                    # 解析link_id
-                    link_id = int(name.split('(')[1].split(')')[0])
-                    stream_obj_set[stream_id].priority[link_id] = int(value)
+        # 特定环境拟合版本 非batch训练
+        # greedy_policy
+        true_dist = x.data.clone().view(-1, 512)
+        true_dist.fill_(0.0 / (10 - 2))
+        target = y[:, :, 3].contiguous().view(-1)
+        true_dist.scatter_(1, target.data.unsqueeze(1).type(torch.int64), 1.0)
+        true_dist[:, 0] = 0
+        mask = torch.nonzero(target.data == 0)
+        if mask.dim() > 0:
+            true_dist.index_fill_(0, mask.squeeze(), 0.0)
+        loss = self.criterion(x.contiguous().view(-1, 512), Variable(true_dist, requires_grad=False)) / norm
         loss.backward()
         if self.opt is not None:
             self.opt.step()
             self.opt.optimizer.zero_grad()
         return loss.item() * norm
+        # 初始版本，包含二种策略
+        # greedy_policy
+        # for epoch_idx in range(epoch_num):
+        #     episode = time_slots[epoch_idx]
+        #     for i in range(flow_num):
+        #         start = 0
+        #         s.push()
+        #         for j in range(len(stream_obj_set)):
+        #             stream_ids = ac_stream_ids[epoch_idx]
+        #             if j not in stream_ids or j > i:
+        #                 stream_obj_set[j].unactivate = True
+        #                 un_active = Bool(f'A_{stream_obj_set[j].stream_id}')
+        #                 s.add(un_active)
+        #                 continue
+        #             stream_obj_set[j].unactivate = False
+        #             un_active = Bool(f'A_{stream_obj_set[j].stream_id}')
+        #             s.add(Not(un_active))
+        #             first_off = episode[start].item()
+        #             first_off %= stream_obj_set[j].period
+        #             start += 1
+        #             add_off = 2
+        #             for link_id in stream_obj_set[j].route_set:
+        #                 offset = Int(f'O_{stream_obj_set[j].stream_id}^({link_id})')
+        #                 s.add(offset == first_off)
+        #                 first_off += add_off
+        #                 first_off %= stream_obj_set[j].period
+        #         sat_or_not = s.check()
+        #         s.pop()
+        #         if sat_or_not != sat:
+        #
+        #             break
+
+        # # exploration policy
+        # for epoch_idx in range(epoch_num):
+        #     ex_slot = torch.multinomial(x[epoch_idx], 1).view(-1)
+        #     episode = ex_slot
+        #     for i in range(flow_num):
+        #         start = 0
+        #         s.push()
+        #         for j in range(len(stream_obj_set)):
+        #             stream_ids = ac_stream_ids[epoch_idx]
+        #             if j not in stream_ids or j > i:
+        #                 stream_obj_set[j].unactivate = True
+        #                 un_active = Bool(f'A_{stream_obj_set[j].stream_id}')
+        #                 s.add(un_active)
+        #                 continue
+        #             stream_obj_set[j].unactivate = False
+        #             un_active = Bool(f'A_{stream_obj_set[j].stream_id}')
+        #             s.add(Not(un_active))
+        #             first_off = episode[start].item()
+        #             first_off %= stream_obj_set[j].period
+        #             start += 1
+        #             add_off = 2
+        #             for link_id in stream_obj_set[j].route_set:
+        #                 offset = Int(f'O_{stream_obj_set[j].stream_id}^({link_id})')
+        #                 s.add(offset == first_off)
+        #                 first_off += add_off
+        #                 first_off %= stream_obj_set[j].period
+        #         sat_or_not = s.check()
+        #         s.pop()
+        #         if sat_or_not == sat:
+        #
+        #         else:
+        #             break
+        # loss.backward()
+        # if self.opt is not None:
+        #     self.opt.step()
+        #     self.opt.optimizer.zero_grad()
+        # return loss.item() * norm
 
 
 def main():
